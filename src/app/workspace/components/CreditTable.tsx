@@ -2,17 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Table,
-  TableBody,
-  TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
 } from "@/components/ui/table";
 import CreditFormModal from "./CreditFormModal";
+import type { Project } from "./ProjectList";
 
 type Loan = {
   id: string;
@@ -20,15 +26,20 @@ type Loan = {
   amount: number;
   currency: string;
   maturity_months: number | null;
+  grace_period_months: number | null;
   status: string | null;
 };
 
-export default function CreditTable({ project }: { project: { id: string } }) {
-  const [loans, setLoans] = useState<Loan[]>([]);
-  const [openModal, setOpenModal] = useState(false);
-  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
+type Props = {
+  project: Project;
+};
 
-  const fetchLoans = async () => {
+export default function CreditTable({ project }: Props) {
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Loan | null>(null);
+
+  const load = async () => {
     const { data, error } = await supabase
       .from("loans")
       .select("*")
@@ -39,26 +50,26 @@ export default function CreditTable({ project }: { project: { id: string } }) {
   };
 
   useEffect(() => {
-    fetchLoans();
+    load();
   }, [project.id]);
 
   const handleSaved = async () => {
-    setOpenModal(false);
-    setEditingLoan(null);
-    await fetchLoans();
+    setOpen(false);
+    setEditing(null);
+    await load();
   };
 
   const totalAmount = loans.reduce((sum, l) => sum + (l.amount || 0), 0);
 
   return (
-    <Card>
+    <Card className="border-slate-200">
       <CardHeader className="flex items-center justify-between">
-        <CardTitle>Crédits &amp; conditions de financement</CardTitle>
+        <CardTitle>Crédits &amp; financements du projet</CardTitle>
         <Button
           size="sm"
           onClick={() => {
-            setEditingLoan(null);
-            setOpenModal(true);
+            setEditing(null);
+            setOpen(true);
           }}
         >
           Ajouter une ligne de crédit
@@ -71,6 +82,7 @@ export default function CreditTable({ project }: { project: { id: string } }) {
               <TableHead>Type</TableHead>
               <TableHead>Montant</TableHead>
               <TableHead>Maturité (mois)</TableHead>
+              <TableHead>Différé (mois)</TableHead>
               <TableHead>Statut</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -83,14 +95,15 @@ export default function CreditTable({ project }: { project: { id: string } }) {
                   {l.amount} {l.currency}
                 </TableCell>
                 <TableCell>{l.maturity_months ?? "-"}</TableCell>
+                <TableCell>{l.grace_period_months ?? "-"}</TableCell>
                 <TableCell>{l.status ?? "-"}</TableCell>
                 <TableCell className="text-right">
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => {
-                      setEditingLoan(l);
-                      setOpenModal(true);
+                      setEditing(l);
+                      setOpen(true);
                     }}
                   >
                     Modifier
@@ -101,28 +114,28 @@ export default function CreditTable({ project }: { project: { id: string } }) {
             {loans.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
-                  className="text-xs text-muted-foreground"
+                  colSpan={6}
+                  className="text-xs text-slate-500"
                 >
-                  Aucune ligne de crédit pour ce projet.
+                  Aucune ligne de crédit enregistrée pour ce projet.
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
 
-        <div className="text-sm text-right">
-          Montant total des crédits :{" "}
+        <div className="text-sm text-right text-slate-700">
+          Montant total :{" "}
           <span className="font-semibold">
             {totalAmount} {loans[0]?.currency || "MAD"}
           </span>
         </div>
 
         <CreditFormModal
-          open={openModal}
-          onOpenChange={setOpenModal}
+          open={open}
+          onOpenChange={setOpen}
           projectId={project.id}
-          loan={editingLoan}
+          loan={editing}
           onSaved={handleSaved}
         />
       </CardContent>

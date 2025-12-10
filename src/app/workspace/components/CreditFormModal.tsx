@@ -18,13 +18,13 @@ type Loan = {
   amount: number;
   currency: string;
   maturity_months: number | null;
-  grace_period_months?: number | null;
+  grace_period_months: number | null;
   status: string | null;
 };
 
 type Props = {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (o: boolean) => void;
   projectId: string;
   loan: Loan | null;
   onSaved: () => void;
@@ -71,14 +71,17 @@ export default function CreditFormModal({
   }, [loan]);
 
   const handleChange = (field: string, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((f) => ({ ...f, [field]: value }));
   };
 
   const handleSubmit = async () => {
-    if (!form.loan_type || !form.amount) return;
+    if (!form.loan_type || !form.amount) {
+      alert("Type de crédit et montant obligatoires.");
+      return;
+    }
 
     if (isEdit && loan) {
-      await supabase
+      const { error } = await supabase
         .from("loans")
         .update({
           loan_type: form.loan_type,
@@ -93,8 +96,13 @@ export default function CreditFormModal({
           status: form.status,
         })
         .eq("id", loan.id);
+
+      if (error) {
+        alert("Erreur mise à jour crédit : " + error.message);
+        return;
+      }
     } else {
-      await supabase.from("loans").insert({
+      const { error } = await supabase.from("loans").insert({
         project_id: projectId,
         loan_type: form.loan_type,
         amount: Number(form.amount),
@@ -107,6 +115,11 @@ export default function CreditFormModal({
           : null,
         status: form.status,
       });
+
+      if (error) {
+        alert("Erreur création crédit : " + error.message);
+        return;
+      }
     }
 
     onSaved();
@@ -117,7 +130,9 @@ export default function CreditFormModal({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? "Modifier la ligne de crédit" : "Nouvelle ligne de crédit"}
+            {isEdit
+              ? "Modifier la ligne de crédit"
+              : "Nouvelle ligne de crédit"}
           </DialogTitle>
         </DialogHeader>
 
@@ -155,13 +170,20 @@ export default function CreditFormModal({
             />
           </div>
           <div className="space-y-1">
-            <Label>Période de grâce (mois)</Label>
+            <Label>Différé (mois)</Label>
             <Input
               type="number"
               value={form.grace_period_months}
               onChange={(e) =>
                 handleChange("grace_period_months", e.target.value)
               }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Statut</Label>
+            <Input
+              value={form.status}
+              onChange={(e) => handleChange("status", e.target.value)}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">

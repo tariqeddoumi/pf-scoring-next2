@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   Dialog,
@@ -11,20 +11,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import type { Project } from "./ProjectList";
 
-type Project = {
-  id: string;
-  project_code: string;
-  name: string;
-  project_type?: string | null;
-  city?: string | null;
-  total_cost?: number | null;
-  status?: string | null;
-};
-
-type ProjectFormModalProps = {
+type Props = {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (o: boolean) => void;
   clientId: string;
   project: Project | null;
   onSaved: () => void;
@@ -36,7 +27,7 @@ export default function ProjectFormModal({
   clientId,
   project,
   onSaved,
-}: ProjectFormModalProps) {
+}: Props) {
   const isEdit = !!project;
 
   const [form, setForm] = useState({
@@ -45,6 +36,7 @@ export default function ProjectFormModal({
     project_type: "",
     city: "",
     total_cost: "",
+    currency: "MAD",
     status: "EN_ETUDE",
   });
 
@@ -56,6 +48,7 @@ export default function ProjectFormModal({
         project_type: project.project_type || "",
         city: project.city || "",
         total_cost: project.total_cost?.toString() || "",
+        currency: project.currency || "MAD",
         status: project.status || "EN_ETUDE",
       });
     } else {
@@ -65,20 +58,24 @@ export default function ProjectFormModal({
         project_type: "",
         city: "",
         total_cost: "",
+        currency: "MAD",
         status: "EN_ETUDE",
       });
     }
   }, [project]);
 
   const handleChange = (field: string, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((f) => ({ ...f, [field]: value }));
   };
 
   const handleSubmit = async () => {
-    if (!form.name || !form.project_code) return;
+    if (!form.name || !form.project_code) {
+      alert("Code et nom projet sont obligatoires.");
+      return;
+    }
 
     if (isEdit && project) {
-      await supabase
+      const { error } = await supabase
         .from("projects")
         .update({
           project_code: form.project_code,
@@ -86,19 +83,31 @@ export default function ProjectFormModal({
           project_type: form.project_type || null,
           city: form.city || null,
           total_cost: form.total_cost ? Number(form.total_cost) : null,
-          status: form.status,
+          currency: form.currency || "MAD",
+          status: form.status || "EN_ETUDE",
         })
         .eq("id", project.id);
+
+      if (error) {
+        alert("Erreur mise à jour projet : " + error.message);
+        return;
+      }
     } else {
-      await supabase.from("projects").insert({
+      const { error } = await supabase.from("projects").insert({
         client_id: clientId,
         project_code: form.project_code,
         name: form.name,
         project_type: form.project_type || null,
         city: form.city || null,
         total_cost: form.total_cost ? Number(form.total_cost) : null,
-        status: form.status,
+        currency: form.currency || "MAD",
+        status: form.status || "EN_ETUDE",
       });
+
+      if (error) {
+        alert("Erreur création projet : " + error.message);
+        return;
+      }
     }
 
     onSaved();
@@ -148,6 +157,20 @@ export default function ProjectFormModal({
               type="number"
               value={form.total_cost}
               onChange={(e) => handleChange("total_cost", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Devise</Label>
+            <Input
+              value={form.currency}
+              onChange={(e) => handleChange("currency", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>Statut</Label>
+            <Input
+              value={form.status}
+              onChange={(e) => handleChange("status", e.target.value)}
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
