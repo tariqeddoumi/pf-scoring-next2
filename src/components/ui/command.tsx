@@ -31,12 +31,27 @@ export function CommandGroup({
   );
 }
 
+type CommandItemProps = React.HTMLAttributes<HTMLDivElement> & {
+  disabled?: boolean;
+};
+
 export function CommandItem({
   className,
+  disabled,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
-  const classes =
-    "px-2 py-1 rounded-md cursor-pointer hover:bg-slate-100 " +
-    (className || "");
-  return <div className={classes} {...props} />;
+}: CommandItemProps) {
+  const base =
+    "px-2 py-1 rounded-md cursor-pointer text-sm transition-colors ";
+  const state = disabled
+    ? "opacity-60 cursor-not-allowed"
+    : "hover:bg-slate-100";
+  const classes = base + state + " " + (className || "");
+
+  return (
+    <div
+      className={classes}
+      aria-disabled={disabled ? true : undefined}
+      {...props}
+    />
+  );
 }
