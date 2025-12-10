@@ -1,7 +1,8 @@
 import * as React from "react";
 
 type AccordionProps = React.HTMLAttributes<HTMLDivElement> & {
-  type?: "single" | "multiple"; // ignoré, juste pour compat avec l'API shadcn
+  // ignoré, juste pour compat avec l'API shadcn (`type="single" | "multiple"`)
+  type?: "single" | "multiple";
 };
 
 export function Accordion({ className, type, ...props }: AccordionProps) {
@@ -10,7 +11,8 @@ export function Accordion({ className, type, ...props }: AccordionProps) {
 }
 
 type AccordionItemProps = React.DetailsHTMLAttributes<HTMLDetailsElement> & {
-  value?: string; // ignoré, utilisé seulement comme identifiant logique
+  // ignoré, juste un identifiant logique (`value="client"`, etc.)
+  value?: string;
 };
 
 export function AccordionItem({ className, value, ...props }: AccordionItemProps) {
@@ -19,7 +21,7 @@ export function AccordionItem({ className, value, ...props }: AccordionItemProps
   return <details className={classes} {...props} />;
 }
 
-type AccordionTriggerProps = React.HTMLAttributes<HTMLSummaryElement> & {
+type AccordionTriggerProps = React.HTMLAttributes<HTMLElement> & {
   disabled?: boolean;
 };
 
@@ -31,6 +33,7 @@ export function AccordionTrigger({
   const classes =
     "list-none cursor-pointer select-none px-4 py-2 text-sm font-medium text-slate-800 flex items-center justify-between " +
     (disabled ? "opacity-60 cursor-not-allowed" : "");
+
   return (
     <summary
       className={classes}
