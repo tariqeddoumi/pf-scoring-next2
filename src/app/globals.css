@@ -1,8 +1,8 @@
-@import "tailwindcss/base";
-@import "tailwindcss/components";
-@import "tailwindcss/utilities";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Style global sans @apply pour éviter les erreurs Tailwind v4 */
+/* Style global en CSS normal (pas de @apply) */
 body {
   background-color: #f8fafc; /* équivalent de bg-slate-50 */
   color: #020617;           /* équivalent de text-slate-900 */
