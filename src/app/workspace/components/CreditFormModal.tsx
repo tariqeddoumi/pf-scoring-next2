@@ -1,93 +1,191 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 
-type Props = {
-  onCreated: () => void;
+export type Loan = {
+  id?: number;
+  facility_type: string;
+  amount: number;
+  currency: string;
+  maturity_months?: number | null;
+  margin_bps?: number | null;
+  comments?: string | null;
 };
 
-export default function ClientFormModal({ onCreated }: Props) {
-  const [open, setOpen] = useState(false);
+type Props = {
+  /** contrôlé depuis CreditTable */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+
+  /** identifiant projet (string ou number, selon ta table) */
+  projectId: string;
+
+  /** crédit en cours d’édition (null = création) */
+  loan: Loan | null;
+
+  /** callback appelé après insert/update réussi (pour recharger la liste) */
+  onSaved: () => Promise<void> | void;
+};
+
+export default function CreditFormModal({
+  open,
+  onOpenChange,
+  projectId,
+  loan,
+  onSaved,
+}: Props) {
   const [saving, setSaving] = useState(false);
 
-  const [radical, setRadical] = useState("");
-  const [name, setName] = useState("");
-  const [segment, setSegment] = useState("");
+  const [facilityType, setFacilityType] = useState("");
+  const [amount, setAmount] = useState<string>("");
+  const [currency, setCurrency] = useState("MAD");
+  const [maturity, setMaturity] = useState<string>("");
+  const [marginBps, setMarginBps] = useState<string>("");
+  const [comments, setComments] = useState("");
 
-  const handleSave = async () => {
-    if (!radical || !name) {
-      alert("Radical et nom sont obligatoires.");
-      return;
+  // Pré-remplir le formulaire en mode édition
+  useEffect(() => {
+    if (loan) {
+      setFacilityType(loan.facility_type || "");
+      setAmount(loan.amount?.toString() ?? "");
+      setCurrency(loan.currency || "MAD");
+      setMaturity(loan.maturity_months?.toString() ?? "");
+      setMarginBps(loan.margin_bps?.toString() ?? "");
+      setComments(loan.comments || "");
+    } else {
+      setFacilityType("");
+      setAmount("");
+      setCurrency("MAD");
+      setMaturity("");
+      setMarginBps("");
+      setComments("");
     }
-    setSaving(true);
-    const { error } = await supabase.from("clients").insert({
-      radical,
-      name,
-      segment: segment || null,
-    });
-    setSaving(false);
-    if (error) {
-      alert("Erreur création client : " + error.message);
-      return;
-    }
-    setOpen(false);
-    setRadical("");
-    setName("");
-    setSegment("");
-    onCreated();
+  }, [loan, open]);
+
+  const handleClose = () => {
+    if (saving) return;
+    onOpenChange(false);
   };
 
-  if (!open) {
-    return (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setOpen(true)}
-      >
-        + Nouveau client
-      </Button>
-    );
-  }
+  const handleSubmit = async () => {
+    if (!facilityType || !amount) {
+      alert("Le type de facilité et le montant sont obligatoires.");
+      return;
+    }
+
+    setSaving(true);
+
+    const payload = {
+      project_id: projectId,
+      facility_type: facilityType,
+      amount: Number(amount),
+      currency,
+      maturity_months: maturity ? Number(maturity) : null,
+      margin_bps: marginBps ? Number(marginBps) : null,
+      comments: comments || null,
+    };
+
+    let error;
+
+    if (loan?.id) {
+      const { error: updErr } = await supabase
+        .from("project_loans") // ⚠️ adapte le nom de la table si nécessaire
+        .update(payload)
+        .eq("id", loan.id);
+      error = updErr;
+    } else {
+      const { error: insErr } = await supabase
+        .from("project_loans") // ⚠️ idem
+        .insert(payload);
+      error = insErr;
+    }
+
+    setSaving(false);
+
+    if (error) {
+      alert("Erreur enregistrement crédit : " + error.message);
+      return;
+    }
+
+    await onSaved();
+    onOpenChange(false);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg shadow-lg w-[380px] p-4 space-y-3 border">
-        <div className="flex justify-between items-center">
-          <h2 className="text-sm font-semibold">Créer un client</h2>
-          <button
-            className="text-xs text-slate-500"
-            onClick={() => setOpen(false)}
-          >
-            Fermer
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="text-sm">
+            {loan ? "Modifier un crédit" : "Nouveau crédit / financement"}
+          </DialogTitle>
+        </DialogHeader>
 
-        <div className="space-y-2 text-xs">
+        <div className="space-y-3 text-xs">
           <div>
-            <div className="mb-1 font-medium">Radical client</div>
+            <div className="mb-1 font-medium">Type de facilité</div>
             <Input
-              value={radical}
-              onChange={(e) => setRadical(e.target.value)}
-              placeholder="Radical (ex : CLT1234)"
+              value={facilityType}
+              onChange={(e) => setFacilityType(e.target.value)}
+              placeholder="Ex : Crédit d'investissement, Spot, Avance sur marché..."
             />
           </div>
-          <div>
-            <div className="mb-1 font-medium">Nom du client</div>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Raison sociale"
-            />
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <div className="mb-1 font-medium">Montant</div>
+              <Input
+                type="number"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Montant en devise"
+              />
+            </div>
+            <div>
+              <div className="mb-1 font-medium">Devise</div>
+              <Input
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                placeholder="MAD / EUR / USD..."
+              />
+            </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <div className="mb-1 font-medium">Maturité (mois)</div>
+              <Input
+                type="number"
+                min="0"
+                value={maturity}
+                onChange={(e) => setMaturity(e.target.value)}
+                placeholder="Ex : 60"
+              />
+            </div>
+            <div>
+              <div className="mb-1 font-medium">Marge (bps)</div>
+              <Input
+                type="number"
+                min="0"
+                value={marginBps}
+                onChange={(e) => setMarginBps(e.target.value)}
+                placeholder="Ex : 250"
+              />
+            </div>
+          </div>
+
           <div>
-            <div className="mb-1 font-medium">Segment</div>
-            <Input
-              value={segment}
-              onChange={(e) => setSegment(e.target.value)}
-              placeholder="TPE / PME / GE / Project Finance..."
+            <div className="mb-1 font-medium">Commentaires / conditions spéciales</div>
+            <Textarea
+              rows={3}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              placeholder="Garanties, sûretés, covenants, etc."
             />
           </div>
         </div>
@@ -96,19 +194,20 @@ export default function ClientFormModal({ onCreated }: Props) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setOpen(false)}
+            onClick={handleClose}
+            disabled={saving}
           >
             Annuler
           </Button>
           <Button
             size="sm"
-            onClick={handleSave}
+            onClick={handleSubmit}
             disabled={saving}
           >
-            {saving ? "Enregistrement..." : "Créer"}
+            {saving ? "Enregistrement..." : loan ? "Mettre à jour" : "Créer"}
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
