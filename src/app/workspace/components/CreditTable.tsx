@@ -2,143 +2,168 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Table,
   TableHeader,
-  TableRow,
   TableHead,
+  TableRow,
   TableBody,
   TableCell,
 } from "@/components/ui/table";
-import CreditFormModal from "./CreditFormModal";
-import type { Project } from "./ProjectList";
-
-type Loan = {
-  id: string;
-  loan_type: string;
-  amount: number;
-  currency: string;
-  maturity_months: number | null;
-  grace_period_months: number | null;
-  status: string | null;
-};
+import CreditFormModal, { Loan } from "./CreditFormModal";
+import type { Project } from "../page";
 
 type Props = {
   project: Project;
+  onCreditsChanged?: () => void;
 };
 
-export default function CreditTable({ project }: Props) {
-  const [loans, setLoans] = useState<Loan[]>([]);
+// On enrichit Loan avec un id obligatoire pour ce composant
+type DbLoan = Loan & { id: number };
+
+export default function CreditTable({ project, onCreditsChanged }: Props) {
+  const [loans, setLoans] = useState<DbLoan[]>([]);
+  const [loading, setLoading] = useState(false);
+
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Loan | null>(null);
+  const [editing, setEditing] = useState<DbLoan | null>(null);
 
-  const load = async () => {
+  const loadLoans = async () => {
+    setLoading(true);
     const { data, error } = await supabase
-      .from("loans")
-      .select("*")
+      .from("project_loans") // ⚠️ adapte le nom si ta table s'appelle autrement
+      .select(
+        "id, facility_type, amount, currency, maturity_months, margin_bps, comments"
+      )
       .eq("project_id", project.id)
-      .order("created_at", { ascending: true });
+      .order("id", { ascending: true });
 
-    if (!error && data) setLoans(data as Loan[]);
+    setLoading(false);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setLoans((data || []) as DbLoan[]);
   };
 
   useEffect(() => {
-    load();
+    loadLoans();
   }, [project.id]);
 
-  const handleSaved = async () => {
-    setOpen(false);
+  const handleNew = () => {
     setEditing(null);
-    await load();
+    setOpen(true);
   };
 
-  const totalAmount = loans.reduce((sum, l) => sum + (l.amount || 0), 0);
+  const handleEdit = (loan: DbLoan) => {
+    setEditing(loan);
+    setOpen(true);
+  };
+
+  const handleSaved = async () => {
+    await loadLoans();
+    onCreditsChanged?.();
+  };
+
+  const handleDelete = async (loan: DbLoan) => {
+    if (!confirm("Supprimer ce crédit ?")) return;
+
+    const { error } = await supabase
+      .from("project_loans") // ⚠️ même remarque : adapte si besoin
+      .delete()
+      .eq("id", loan.id);
+
+    if (error) {
+      alert("Erreur suppression : " + error.message);
+      return;
+    }
+
+    await loadLoans();
+    onCreditsChanged?.();
+  };
 
   return (
-    <Card className="border-slate-200">
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle>Crédits &amp; financements du projet</CardTitle>
-        <Button
-          size="sm"
-          onClick={() => {
-            setEditing(null);
-            setOpen(true);
-          }}
-        >
-          Ajouter une ligne de crédit
+    <div className="space-y-2 text-xs">
+      <div className="flex justify-between items-center mb-1">
+        <div className="font-medium">Crédits & financements du projet</div>
+        <Button size="sm" onClick={handleNew}>
+          + Ajouter un crédit
         </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Montant</TableHead>
-              <TableHead>Maturité (mois)</TableHead>
-              <TableHead>Différé (mois)</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loans.map((l) => (
-              <TableRow key={l.id}>
-                <TableCell>{l.loan_type}</TableCell>
-                <TableCell>
-                  {l.amount} {l.currency}
-                </TableCell>
-                <TableCell>{l.maturity_months ?? "-"}</TableCell>
-                <TableCell>{l.grace_period_months ?? "-"}</TableCell>
-                <TableCell>{l.status ?? "-"}</TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditing(l);
-                      setOpen(true);
-                    }}
-                  >
-                    Modifier
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-            {loans.length === 0 && (
+      </div>
+
+      <CardContent className="p-0">
+        {loading && (
+          <p className="text-[11px] text-slate-500">Chargement des crédits…</p>
+        )}
+
+        {!loading && loans.length === 0 && (
+          <p className="text-[11px] text-slate-500">
+            Aucun crédit enregistré pour ce projet.
+          </p>
+        )}
+
+        {!loading && loans.length > 0 && (
+          <Table className="mt-2">
+            <TableHeader>
               <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="text-xs text-slate-500"
-                >
-                  Aucune ligne de crédit enregistrée pour ce projet.
-                </TableCell>
+                <TableHead>Type de facilité</TableHead>
+                <TableHead>Montant</TableHead>
+                <TableHead>Devise</TableHead>
+                <TableHead>Maturité (mois)</TableHead>
+                <TableHead>Marge (bps)</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-
-        <div className="text-sm text-right text-slate-700">
-          Montant total :{" "}
-          <span className="font-semibold">
-            {totalAmount} {loans[0]?.currency || "MAD"}
-          </span>
-        </div>
-
-        <CreditFormModal
-          open={open}
-          onOpenChange={setOpen}
-          projectId={project.id}
-          loan={editing}
-          onSaved={handleSaved}
-        />
+            </TableHeader>
+            <TableBody>
+              {loans.map((loan) => (
+                <TableRow key={loan.id}>
+                  <TableCell>{loan.facility_type}</TableCell>
+                  <TableCell>{loan.amount?.toLocaleString("fr-MA")}</TableCell>
+                  <TableCell>{loan.currency}</TableCell>
+                  <TableCell>
+                    {loan.maturity_months != null ? loan.maturity_months : "-"}
+                  </TableCell>
+                  <TableCell>
+                    {loan.margin_bps != null ? loan.margin_bps : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(loan)}
+                      >
+                        Éditer
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(loan)}
+                      >
+                        Supprimer
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </CardContent>
-    </Card>
+
+      <CreditFormModal
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) setEditing(null);
+        }}
+        projectId={String(project.id)}
+        loan={editing}
+        onSaved={handleSaved}
+      />
+    </div>
   );
 }
