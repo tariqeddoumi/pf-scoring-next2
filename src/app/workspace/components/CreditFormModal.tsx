@@ -1,201 +1,114 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-
-type Loan = {
-  id: string;
-  loan_type: string;
-  amount: number;
-  currency: string;
-  maturity_months: number | null;
-  grace_period_months: number | null;
-  status: string | null;
-};
+import { Input } from "@/components/ui/input";
 
 type Props = {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  projectId: string;
-  loan: Loan | null;
-  onSaved: () => void;
+  onCreated: () => void;
 };
 
-export default function CreditFormModal({
-  open,
-  onOpenChange,
-  projectId,
-  loan,
-  onSaved,
-}: Props) {
-  const isEdit = !!loan;
+export default function ClientFormModal({ onCreated }: Props) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [form, setForm] = useState({
-    loan_type: "",
-    amount: "",
-    currency: "MAD",
-    maturity_months: "",
-    grace_period_months: "",
-    status: "PROPOSE",
-  });
+  const [radical, setRadical] = useState("");
+  const [name, setName] = useState("");
+  const [segment, setSegment] = useState("");
 
-  useEffect(() => {
-    if (loan) {
-      setForm({
-        loan_type: loan.loan_type || "",
-        amount: loan.amount?.toString() || "",
-        currency: loan.currency || "MAD",
-        maturity_months: loan.maturity_months?.toString() || "",
-        grace_period_months: loan.grace_period_months?.toString() || "",
-        status: loan.status || "PROPOSE",
-      });
-    } else {
-      setForm({
-        loan_type: "",
-        amount: "",
-        currency: "MAD",
-        maturity_months: "",
-        grace_period_months: "",
-        status: "PROPOSE",
-      });
-    }
-  }, [loan]);
-
-  const handleChange = (field: string, value: string) => {
-    setForm((f) => ({ ...f, [field]: value }));
-  };
-
-  const handleSubmit = async () => {
-    if (!form.loan_type || !form.amount) {
-      alert("Type de crédit et montant obligatoires.");
+  const handleSave = async () => {
+    if (!radical || !name) {
+      alert("Radical et nom sont obligatoires.");
       return;
     }
-
-    if (isEdit && loan) {
-      const { error } = await supabase
-        .from("loans")
-        .update({
-          loan_type: form.loan_type,
-          amount: Number(form.amount),
-          currency: form.currency,
-          maturity_months: form.maturity_months
-            ? Number(form.maturity_months)
-            : null,
-          grace_period_months: form.grace_period_months
-            ? Number(form.grace_period_months)
-            : null,
-          status: form.status,
-        })
-        .eq("id", loan.id);
-
-      if (error) {
-        alert("Erreur mise à jour crédit : " + error.message);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("loans").insert({
-        project_id: projectId,
-        loan_type: form.loan_type,
-        amount: Number(form.amount),
-        currency: form.currency,
-        maturity_months: form.maturity_months
-          ? Number(form.maturity_months)
-          : null,
-        grace_period_months: form.grace_period_months
-          ? Number(form.grace_period_months)
-          : null,
-        status: form.status,
-      });
-
-      if (error) {
-        alert("Erreur création crédit : " + error.message);
-        return;
-      }
+    setSaving(true);
+    const { error } = await supabase.from("clients").insert({
+      radical,
+      name,
+      segment: segment || null,
+    });
+    setSaving(false);
+    if (error) {
+      alert("Erreur création client : " + error.message);
+      return;
     }
-
-    onSaved();
+    setOpen(false);
+    setRadical("");
+    setName("");
+    setSegment("");
+    onCreated();
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {isEdit
-              ? "Modifier la ligne de crédit"
-              : "Nouvelle ligne de crédit"}
-          </DialogTitle>
-        </DialogHeader>
+  if (!open) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+      >
+        + Nouveau client
+      </Button>
+    );
+  }
 
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label>Type de crédit</Label>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-lg shadow-lg w-[380px] p-4 space-y-3 border">
+        <div className="flex justify-between items-center">
+          <h2 className="text-sm font-semibold">Créer un client</h2>
+          <button
+            className="text-xs text-slate-500"
+            onClick={() => setOpen(false)}
+          >
+            Fermer
+          </button>
+        </div>
+
+        <div className="space-y-2 text-xs">
+          <div>
+            <div className="mb-1 font-medium">Radical client</div>
             <Input
-              value={form.loan_type}
-              onChange={(e) => handleChange("loan_type", e.target.value)}
+              value={radical}
+              onChange={(e) => setRadical(e.target.value)}
+              placeholder="Radical (ex : CLT1234)"
             />
           </div>
-          <div className="space-y-1">
-            <Label>Montant</Label>
+          <div>
+            <div className="mb-1 font-medium">Nom du client</div>
             <Input
-              type="number"
-              value={form.amount}
-              onChange={(e) => handleChange("amount", e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Raison sociale"
             />
           </div>
-          <div className="space-y-1">
-            <Label>Devise</Label>
+          <div>
+            <div className="mb-1 font-medium">Segment</div>
             <Input
-              value={form.currency}
-              onChange={(e) => handleChange("currency", e.target.value)}
+              value={segment}
+              onChange={(e) => setSegment(e.target.value)}
+              placeholder="TPE / PME / GE / Project Finance..."
             />
-          </div>
-          <div className="space-y-1">
-            <Label>Maturité (mois)</Label>
-            <Input
-              type="number"
-              value={form.maturity_months}
-              onChange={(e) =>
-                handleChange("maturity_months", e.target.value)
-              }
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Différé (mois)</Label>
-            <Input
-              type="number"
-              value={form.grace_period_months}
-              onChange={(e) =>
-                handleChange("grace_period_months", e.target.value)
-              }
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Statut</Label>
-            <Input
-              value={form.status}
-              onChange={(e) => handleChange("status", e.target.value)}
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Annuler
-            </Button>
-            <Button onClick={handleSubmit}>
-              {isEdit ? "Enregistrer" : "Créer"}
-            </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(false)}
+          >
+            Annuler
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? "Enregistrement..." : "Créer"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
