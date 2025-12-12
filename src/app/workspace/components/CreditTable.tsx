@@ -2,168 +2,100 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableRow,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
-import CreditFormModal, { Loan } from "./CreditFormModal";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import CreditFormModal from "./CreditFormModal";
 import type { Project } from "../page";
+
+export type Loan = {
+  id: string;
+  project_id: string;
+  facility_type: string;
+  amount: number;
+  maturity_months: number;
+  rate: number;
+};
 
 type Props = {
   project: Project;
-  onCreditsChanged?: () => void;
 };
 
-// On enrichit Loan avec un id obligatoire pour ce composant
-type DbLoan = Loan & { id: number };
-
-export default function CreditTable({ project, onCreditsChanged }: Props) {
-  const [loans, setLoans] = useState<DbLoan[]>([]);
-  const [loading, setLoading] = useState(false);
-
+export default function CreditTable({ project }: Props) {
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<DbLoan | null>(null);
+  const [editing, setEditing] = useState<Loan | null>(null);
 
-  const loadLoans = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("project_loans") // ⚠️ adapte le nom si ta table s'appelle autrement
-      .select(
-        "id, facility_type, amount, currency, maturity_months, margin_bps, comments"
-      )
+  const fetchLoans = async () => {
+    const { data } = await supabase
+      .from("loans")
+      .select("*")
       .eq("project_id", project.id)
-      .order("id", { ascending: true });
+      .order("created_at", { ascending: false });
 
-    setLoading(false);
-
-    if (error) {
-      console.error(error);
-      return;
-    }
-    setLoans((data || []) as DbLoan[]);
+    setLoans((data || []) as Loan[]);
   };
 
   useEffect(() => {
-    loadLoans();
+    fetchLoans();
   }, [project.id]);
 
-  const handleNew = () => {
-    setEditing(null);
-    setOpen(true);
-  };
-
-  const handleEdit = (loan: DbLoan) => {
-    setEditing(loan);
-    setOpen(true);
-  };
-
-  const handleSaved = async () => {
-    await loadLoans();
-    onCreditsChanged?.();
-  };
-
-  const handleDelete = async (loan: DbLoan) => {
-    if (!confirm("Supprimer ce crédit ?")) return;
-
-    const { error } = await supabase
-      .from("project_loans") // ⚠️ même remarque : adapte si besoin
-      .delete()
-      .eq("id", loan.id);
-
-    if (error) {
-      alert("Erreur suppression : " + error.message);
-      return;
-    }
-
-    await loadLoans();
-    onCreditsChanged?.();
-  };
-
   return (
-    <div className="space-y-2 text-xs">
-      <div className="flex justify-between items-center mb-1">
-        <div className="font-medium">Crédits & financements du projet</div>
-        <Button size="sm" onClick={handleNew}>
+    <Card>
+      <CardHeader>
+        <CardTitle>Crédits du projet</CardTitle>
+      </CardHeader>
+
+      <CardContent>
+        <button
+          className="px-3 py-1 rounded bg-slate-200 text-xs mb-2"
+          onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}
+        >
           + Ajouter un crédit
-        </Button>
-      </div>
+        </button>
 
-      <CardContent className="p-0">
-        {loading && (
-          <p className="text-[11px] text-slate-500">Chargement des crédits…</p>
-        )}
+        <table className="w-full text-xs border">
+          <thead>
+            <tr className="bg-slate-50 text-slate-600">
+              <th className="p-1 border">Type</th>
+              <th className="p-1 border">Montant</th>
+              <th className="p-1 border">Maturité</th>
+              <th className="p-1 border">Taux</th>
+              <th className="p-1 border"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {loans.map((loan) => (
+              <tr key={loan.id}>
+                <td className="border p-1">{loan.facility_type}</td>
+                <td className="border p-1">{loan.amount.toLocaleString()}</td>
+                <td className="border p-1">{loan.maturity_months} mois</td>
+                <td className="border p-1">{loan.rate}%</td>
+                <td className="border p-1">
+                  <button
+                    className="text-blue-600 underline"
+                    onClick={() => {
+                      setEditing(loan);
+                      setOpen(true);
+                    }}
+                  >
+                    Modifier
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-        {!loading && loans.length === 0 && (
-          <p className="text-[11px] text-slate-500">
-            Aucun crédit enregistré pour ce projet.
-          </p>
-        )}
-
-        {!loading && loans.length > 0 && (
-          <Table className="mt-2">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Type de facilité</TableHead>
-                <TableHead>Montant</TableHead>
-                <TableHead>Devise</TableHead>
-                <TableHead>Maturité (mois)</TableHead>
-                <TableHead>Marge (bps)</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loans.map((loan) => (
-                <TableRow key={loan.id}>
-                  <TableCell>{loan.facility_type}</TableCell>
-                  <TableCell>{loan.amount?.toLocaleString("fr-MA")}</TableCell>
-                  <TableCell>{loan.currency}</TableCell>
-                  <TableCell>
-                    {loan.maturity_months != null ? loan.maturity_months : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {loan.margin_bps != null ? loan.margin_bps : "-"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(loan)}
-                      >
-                        Éditer
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(loan)}
-                      >
-                        Supprimer
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <CreditFormModal
+          open={open}
+          onOpenChange={setOpen}
+          projectId={project.id}
+          loan={editing}
+          onSaved={fetchLoans}
+        />
       </CardContent>
-
-      <CreditFormModal
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (!o) setEditing(null);
-        }}
-        projectId={String(project.id)}
-        loan={editing}
-        onSaved={handleSaved}
-      />
-    </div>
+    </Card>
   );
 }

@@ -9,178 +9,78 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import type { Project } from "./ProjectList";
+import type { Client, Project } from "../page";
 
 type Props = {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  clientId: string;
-  project: Project | null;
-  onSaved: () => void;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  client: Client;
+  onCreated: () => Promise<void>;
 };
 
 export default function ProjectFormModal({
   open,
   onOpenChange,
-  clientId,
-  project,
-  onSaved,
+  client,
+  onCreated,
 }: Props) {
-  const isEdit = !!project;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open !== undefined ? open : internalOpen;
+  const setOpen = onOpenChange || setInternalOpen;
 
   const [form, setForm] = useState({
-    project_code: "",
     name: "",
-    project_type: "",
     city: "",
-    total_cost: "",
-    currency: "MAD",
-    status: "EN_ETUDE",
+    type: "",
   });
 
-  useEffect(() => {
-    if (project) {
-      setForm({
-        project_code: project.project_code || "",
-        name: project.name || "",
-        project_type: project.project_type || "",
-        city: project.city || "",
-        total_cost: project.total_cost?.toString() || "",
-        currency: project.currency || "MAD",
-        status: project.status || "EN_ETUDE",
-      });
-    } else {
-      setForm({
-        project_code: "",
-        name: "",
-        project_type: "",
-        city: "",
-        total_cost: "",
-        currency: "MAD",
-        status: "EN_ETUDE",
-      });
-    }
-  }, [project]);
+  const save = async () => {
+    if (!form.name.trim()) return;
 
-  const handleChange = (field: string, value: string) => {
-    setForm((f) => ({ ...f, [field]: value }));
-  };
+    await supabase.from("projects").insert({
+      client_id: client.id,
+      name: form.name,
+      city: form.city || null,
+      type: form.type || null,
+    });
 
-  const handleSubmit = async () => {
-    if (!form.name || !form.project_code) {
-      alert("Code et nom projet sont obligatoires.");
-      return;
-    }
-
-    if (isEdit && project) {
-      const { error } = await supabase
-        .from("projects")
-        .update({
-          project_code: form.project_code,
-          name: form.name,
-          project_type: form.project_type || null,
-          city: form.city || null,
-          total_cost: form.total_cost ? Number(form.total_cost) : null,
-          currency: form.currency || "MAD",
-          status: form.status || "EN_ETUDE",
-        })
-        .eq("id", project.id);
-
-      if (error) {
-        alert("Erreur mise à jour projet : " + error.message);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("projects").insert({
-        client_id: clientId,
-        project_code: form.project_code,
-        name: form.name,
-        project_type: form.project_type || null,
-        city: form.city || null,
-        total_cost: form.total_cost ? Number(form.total_cost) : null,
-        currency: form.currency || "MAD",
-        status: form.status || "EN_ETUDE",
-      });
-
-      if (error) {
-        alert("Erreur création projet : " + error.message);
-        return;
-      }
-    }
-
-    onSaved();
+    await onCreated();
+    setForm({ name: "", city: "", type: "" });
+    setOpen(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog open={isOpen} onOpenChange={setOpen}>
+      <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? "Modifier le projet" : "Nouveau projet"}
-          </DialogTitle>
+          <DialogTitle>Nouveau projet</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label>Code projet</Label>
-            <Input
-              value={form.project_code}
-              onChange={(e) => handleChange("project_code", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Nom du projet</Label>
-            <Input
-              value={form.name}
-              onChange={(e) => handleChange("name", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Type de projet</Label>
-            <Input
-              value={form.project_type}
-              onChange={(e) => handleChange("project_type", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Ville</Label>
-            <Input
-              value={form.city}
-              onChange={(e) => handleChange("city", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Coût total</Label>
-            <Input
-              type="number"
-              value={form.total_cost}
-              onChange={(e) => handleChange("total_cost", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Devise</Label>
-            <Input
-              value={form.currency}
-              onChange={(e) => handleChange("currency", e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Statut</Label>
-            <Input
-              value={form.status}
-              onChange={(e) => handleChange("status", e.target.value)}
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Annuler
-            </Button>
-            <Button onClick={handleSubmit}>
-              {isEdit ? "Enregistrer" : "Créer"}
-            </Button>
-          </div>
+        <div className="space-y-3 text-xs">
+          <Input
+            placeholder="Nom du projet"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+
+          <Input
+            placeholder="Ville"
+            value={form.city}
+            onChange={(e) => setForm({ ...form, city: e.target.value })}
+          />
+
+          <Input
+            placeholder="Type (ex : Énergie, PPP...)"
+            value={form.type}
+            onChange={(e) => setForm({ ...form, type: e.target.value })}
+          />
+
+          <button
+            className="w-full bg-blue-600 mt-2 text-white p-2 rounded"
+            onClick={save}
+          >
+            Enregistrer
+          </button>
         </div>
       </DialogContent>
     </Dialog>
