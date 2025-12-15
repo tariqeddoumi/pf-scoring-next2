@@ -2,14 +2,15 @@ export type ClientStatus = "active" | "archived";
 
 export type ClientRow = {
   id: string;
-  radical: string;
+  radical: string | null;   // ✅ ici
   name: string;
   segment?: string | null;
-  status: ClientStatus;
+  status: "active" | "archived";
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
 };
+
 
 export type ProjectRow = {
   id: string;
