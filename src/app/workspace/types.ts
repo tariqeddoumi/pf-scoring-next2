@@ -1,23 +1,25 @@
+export type ClientStatus = "active" | "archived";
+
 export type ClientRow = {
   id: string;
-  name: string;
   radical: string;
-  segment: string | null;
-  status: "Actif" | "Archivé";
+  name: string;
+  segment?: string | null;
+  status: ClientStatus;
   notes?: string | null;
   created_at?: string;
+  updated_at?: string;
 };
 
 export type ProjectRow = {
   id: string;
   client_id: string;
-  project_code: string;
   name: string;
-  city: string | null;
-  project_type: string | null;
-  total_cost: number | null;
-  financing_amount: number | null;
-  currency: string | null;
-  status: "Actif" | "Archivé";
+  project_type?: string | null;
+  city?: string | null;
+  total_cost?: number | null;
+  financing_amount?: number | null;
+  status?: "draft" | "validated" | "archived" | null;
   created_at?: string;
+  updated_at?: string;
 };

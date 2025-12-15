@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableHead, TableRow, TableBody, TableCell } from "@/components/ui/table";
-import type { ClientRow } from "./ClientFormModal";
-import ProjectFormModal, { ProjectRow } from "./ProjectFormModal";
+import type { ClientRow } from "../types";
+import ProjectFormModal from "./ProjectFormModal";
+import type { ProjectRow } from "../types";
 
 const PROJECTS_TABLE = "projects";
 

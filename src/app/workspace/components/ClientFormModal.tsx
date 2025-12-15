@@ -10,16 +10,7 @@ import { Badge } from "@/components/ui/badge";
 
 const CLIENTS_TABLE = "clients";
 
-export type ClientRow = {
-  id?: string;
-  name: string;
-  radical: string | null;
-  segment: string | null;
-  status: "active" | "archived";
-  notes: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
+import type { ClientRow, ClientStatus } from "../types";
 
 type Props = {
   open: boolean;

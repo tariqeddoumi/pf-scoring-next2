@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableHead, TableRow, TableBody, TableCell } from "@/components/ui/table";
-import ClientFormModal, { ClientRow } from "./ClientFormModal";
+import ClientFormModal from "./ClientFormModal";
+import type { ClientRow } from "../types";
 
 const CLIENTS_TABLE = "clients";
 

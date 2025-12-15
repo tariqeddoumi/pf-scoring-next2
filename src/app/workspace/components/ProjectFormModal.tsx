@@ -7,21 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { ClientRow } from "./ClientFormModal";
+import type { ClientRow } from "../types";
 
 const PROJECTS_TABLE = "projects";
 
-export type ProjectRow = {
-  id?: string;
-  client_id: string;
-  name: string;
-  city: string | null;
-  type: string | null;
-  status: "active" | "archived";
-  notes: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
+import type { ProjectRow } from "../types";
 
 type Props = {
   open: boolean;
