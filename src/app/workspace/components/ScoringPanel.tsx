@@ -244,16 +244,7 @@ export default function ScoringPanel({ project }: Props) {
         </div>
 
         {/* Drawer / panneau pour créer / modifier une évaluation */}
-        <EvaluationFormDrawer
-          open={openDrawer}
-          onOpenChange={(o) => {
-            setOpenDrawer(o);
-            if (!o) setEditingEval(null);
-          }}
-          project={project}
-          evaluation={editingEval}
-          onSaved={handleSaved}
-        />
+        
       </CardContent>
     </Card>
   );
