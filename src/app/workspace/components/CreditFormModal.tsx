@@ -8,95 +8,147 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-const CLIENTS_TABLE = "clients";
+const LOANS_TABLE = "project_loans"; // <-- change to "loans" if needed
 
-export type ClientRow = {
+export type Loan = {
   id?: string;
-  name: string;
-  radical: string | null;
-  segment: string | null;
-  status: "active" | "archived";
-  notes: string | null;
+  project_id: string;
+  facility_type: string;
+  amount: number;
+  currency: string;
+  maturity_months: number | null;
+  margin_bps: number | null;
+  rate_percent: number | null;
+  status: "draft" | "validated" | "cancelled";
+  comments: string | null;
   created_at?: string;
   updated_at?: string;
 };
 
 type Props = {
   open: boolean;
-  onOpenChange: (o: boolean) => void;
+  onOpenChange: (open: boolean) => void;
+  projectId: string;
 
-  client: ClientRow | null;          // null = création
-  forceCreate?: boolean;             // duplication -> création forcée
+  /** null = création */
+  loan: Loan | null;
 
+  /** callback après save réussi */
   onSaved: () => Promise<void> | void;
+
+  /** optionnel : mode duplication (pré-remplit mais force création) */
+  forceCreate?: boolean;
 };
 
-export default function ClientFormModal({
+const DEFAULT_CURRENCY = "MAD";
+
+function toNumberOrNull(v: string) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export default function CreditFormModal({
   open,
   onOpenChange,
-  client,
-  forceCreate,
+  projectId,
+  loan,
   onSaved,
+  forceCreate,
 }: Props) {
-  const isEdit = !!client?.id && !forceCreate;
+  const isEdit = !!loan?.id && !forceCreate;
 
   const [saving, setSaving] = useState(false);
-  const [name, setName] = useState("");
-  const [radical, setRadical] = useState("");
-  const [segment, setSegment] = useState("");
-  const [status, setStatus] = useState<ClientRow["status"]>("active");
-  const [notes, setNotes] = useState("");
 
+  const [facilityType, setFacilityType] = useState("");
+  const [amount, setAmount] = useState<string>("");
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
+  const [maturity, setMaturity] = useState<string>("");
+  const [marginBps, setMarginBps] = useState<string>("");
+  const [ratePercent, setRatePercent] = useState<string>("");
+  const [status, setStatus] = useState<Loan["status"]>("draft");
+  const [comments, setComments] = useState<string>("");
+
+  // pré-remplissage
   useEffect(() => {
     if (!open) return;
 
-    if (client) {
-      setName(client.name ?? "");
-      setRadical(client.radical ?? "");
-      setSegment(client.segment ?? "");
-      setStatus(client.status ?? "active");
-      setNotes(client.notes ?? "");
+    if (loan) {
+      setFacilityType(loan.facility_type ?? "");
+      setAmount(
+        loan.amount != null && Number.isFinite(Number(loan.amount))
+          ? String(loan.amount)
+          : ""
+      );
+      setCurrency(loan.currency || DEFAULT_CURRENCY);
+      setMaturity(loan.maturity_months != null ? String(loan.maturity_months) : "");
+      setMarginBps(loan.margin_bps != null ? String(loan.margin_bps) : "");
+      setRatePercent(loan.rate_percent != null ? String(loan.rate_percent) : "");
+      setStatus(loan.status || "draft");
+      setComments(loan.comments || "");
     } else {
-      setName("");
-      setRadical("");
-      setSegment("");
-      setStatus("active");
-      setNotes("");
+      setFacilityType("");
+      setAmount("");
+      setCurrency(DEFAULT_CURRENCY);
+      setMaturity("");
+      setMarginBps("");
+      setRatePercent("");
+      setStatus("draft");
+      setComments("");
     }
-  }, [open, client]);
+  }, [open, loan]);
 
-  const canSave = useMemo(() => name.trim().length > 0, [name]);
+  const amountNum = useMemo(() => {
+    const n = Number(amount);
+    return Number.isFinite(n) ? n : 0;
+  }, [amount]);
+
+  const canSave = useMemo(() => {
+    return facilityType.trim().length > 0 && amountNum > 0 && currency.trim().length > 0;
+  }, [facilityType, amountNum, currency]);
+
+  const close = () => {
+    if (saving) return;
+    onOpenChange(false);
+  };
 
   const save = async () => {
     if (!canSave) {
-      alert("Nom client obligatoire.");
+      alert("Type de facilité + montant + devise sont obligatoires.");
       return;
     }
 
     setSaving(true);
 
-    const payload: Partial<ClientRow> = {
-      name: name.trim(),
-      radical: radical.trim() ? radical.trim() : null,
-      segment: segment.trim() ? segment.trim() : null,
+    const payload: Partial<Loan> = {
+      project_id: projectId,
+      facility_type: facilityType.trim(),
+      amount: Number(amount),
+      currency: currency.trim().toUpperCase(),
+      maturity_months: maturity.trim() ? Number(maturity) : null,
+      margin_bps: marginBps.trim() ? Number(marginBps) : null,
+      rate_percent: ratePercent.trim() ? Number(ratePercent) : null,
       status,
-      notes: notes.trim() ? notes.trim() : null,
+      comments: comments.trim() ? comments.trim() : null,
     };
 
     let error: any = null;
 
-    if (isEdit && client?.id) {
-      const { error: e } = await supabase.from(CLIENTS_TABLE).update(payload).eq("id", client.id);
-      error = e;
+    if (isEdit && loan?.id) {
+      const { error: updErr } = await supabase
+        .from(LOANS_TABLE)
+        .update(payload)
+        .eq("id", loan.id);
+      error = updErr;
     } else {
-      const { error: e } = await supabase.from(CLIENTS_TABLE).insert(payload);
-      error = e;
+      // création (incluant duplication)
+      const { error: insErr } = await supabase.from(LOANS_TABLE).insert(payload);
+      error = insErr;
     }
 
     setSaving(false);
 
     if (error) {
-      alert("Erreur enregistrement client : " + error.message);
+      alert("Erreur enregistrement crédit : " + error.message);
       return;
     }
 
@@ -109,15 +161,23 @@ export default function ClientFormModal({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-sm flex items-center justify-between gap-2">
-            <span>{isEdit ? "Modifier client" : forceCreate ? "Dupliquer client" : "Nouveau client"}</span>
-            <Badge className="text-[10px] px-2 py-0">{isEdit ? "EDIT" : "CREATE"}</Badge>
+            <span>
+              {isEdit ? "Modifier un crédit" : forceCreate ? "Dupliquer un crédit" : "Nouveau crédit"}
+            </span>
+            <Badge className="text-[10px] px-2 py-0">
+              Projet: {projectId.slice(0, 8)}…
+            </Badge>
           </DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-12 gap-3 text-xs">
           <div className="col-span-6">
-            <div className="mb-1 font-medium">Nom</div>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Raison sociale" />
+            <div className="mb-1 font-medium">Type de facilité</div>
+            <Input
+              value={facilityType}
+              onChange={(e) => setFacilityType(e.target.value)}
+              placeholder="Crédit inv., Spot, Avance sur marché…"
+            />
           </div>
 
           <div className="col-span-3">
@@ -125,36 +185,98 @@ export default function ClientFormModal({
             <select
               className="border rounded px-2 py-2 w-full"
               value={status}
-              onChange={(e) => setStatus(e.target.value as ClientRow["status"])}
+              onChange={(e) => setStatus(e.target.value as Loan["status"])}
             >
-              <option value="active">Actif</option>
-              <option value="archived">Archivé</option>
+              <option value="draft">Brouillon</option>
+              <option value="validated">Validé</option>
+              <option value="cancelled">Annulé</option>
             </select>
           </div>
 
           <div className="col-span-3">
-            <div className="mb-1 font-medium">Segment</div>
-            <Input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="PME / GE / ..." />
+            <div className="mb-1 font-medium">Devise</div>
+            <Input
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              placeholder="MAD"
+            />
           </div>
 
-          <div className="col-span-6">
-            <div className="mb-1 font-medium">Radical</div>
-            <Input value={radical} onChange={(e) => setRadical(e.target.value)} placeholder="Ex: CLT1234" />
+          <div className="col-span-4">
+            <div className="mb-1 font-medium">Montant</div>
+            <Input
+              type="number"
+              min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+            />
+            <div className="text-[11px] text-slate-500 mt-1">
+              Contrôle: montant &gt; 0
+            </div>
           </div>
 
-          <div className="col-span-12">
-            <div className="mb-1 font-medium">Notes</div>
-            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Infos relation, remarques RM..." />
+          <div className="col-span-4">
+            <div className="mb-1 font-medium">Maturité (mois)</div>
+            <Input
+              type="number"
+              min="0"
+              value={maturity}
+              onChange={(e) => setMaturity(e.target.value)}
+              placeholder="Ex: 60"
+            />
+          </div>
+
+          <div className="col-span-4">
+            <div className="mb-1 font-medium">Marge (bps)</div>
+            <Input
+              type="number"
+              min="0"
+              value={marginBps}
+              onChange={(e) => setMarginBps(e.target.value)}
+              placeholder="Ex: 250"
+            />
+          </div>
+
+          <div className="col-span-4">
+            <div className="mb-1 font-medium">Taux (%)</div>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              value={ratePercent}
+              onChange={(e) => setRatePercent(e.target.value)}
+              placeholder="Ex: 6.25"
+            />
+          </div>
+
+          <div className="col-span-8">
+            <div className="mb-1 font-medium">Commentaires / conditions</div>
+            <Textarea
+              rows={3}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              placeholder="Garanties, covenants, conditions spéciales…"
+            />
           </div>
 
           <div className="col-span-12 flex justify-end gap-2 pt-1">
-            <Button size="sm" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            <Button variant="outline" size="sm" onClick={close} disabled={saving}>
               Annuler
             </Button>
             <Button size="sm" onClick={save} disabled={saving || !canSave}>
               {saving ? "Enregistrement..." : isEdit ? "Mettre à jour" : "Enregistrer"}
             </Button>
           </div>
+        </div>
+
+        {/* petite zone “diagnostic compact” */}
+        <div className="mt-2 text-[11px] text-slate-500">
+          <span className="font-semibold">Calcul rapide:</span>{" "}
+          Montant={amountNum.toLocaleString("fr-MA")} {currency.toUpperCase()} •
+          Maturité={toNumberOrNull(maturity) ?? "—"} mois •
+          Marge={toNumberOrNull(marginBps) ?? "—"} bps •
+          Taux={toNumberOrNull(ratePercent) ?? "—"}%
         </div>
       </DialogContent>
     </Dialog>

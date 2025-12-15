@@ -6,61 +6,88 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableHeader, TableHead, TableRow, TableBody, TableCell } from "@/components/ui/table";
-import ClientFormModal, { ClientRow } from "./ClientFormModal";
+import {
+  Table,
+  TableHeader,
+  TableHead,
+  TableRow,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import CreditFormModal, { Loan } from "./CreditFormModal";
+import type { ProjectRow } from "./ProjectFormModal";
 
-const CLIENTS_TABLE = "clients";
+const LOANS_TABLE = "project_loans"; // <-- change to "loans" if needed
 
 type Props = {
-  selectedClient: ClientRow | null;
-  onSelect: (c: ClientRow) => void;
+  project: ProjectRow;
 };
 
-export default function ClientTable({ selectedClient, onSelect }: Props) {
-  const [rows, setRows] = useState<ClientRow[]>([]);
+function fmtMoney(amount: number, ccy: string) {
+  const a = Number(amount || 0);
+  const cur = (ccy || "MAD").toUpperCase();
+  return `${a.toLocaleString("fr-MA")} ${cur}`;
+}
+
+export default function CreditTable({ project }: Props) {
+  const [rows, setRows] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [q, setQ] = useState("");
-  const [onlyActive, setOnlyActive] = useState(true);
+  const [onlyValidated, setOnlyValidated] = useState(false);
 
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<ClientRow | null>(null);
+  const [editing, setEditing] = useState<Loan | null>(null);
   const [forceCreate, setForceCreate] = useState(false);
 
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase
-      .from(CLIENTS_TABLE)
-      .select("id,name,radical,segment,status,notes,created_at,updated_at")
-      .order("updated_at", { ascending: false });
+      .from(LOANS_TABLE)
+      .select(
+        "id, project_id, facility_type, amount, currency, maturity_months, margin_bps, rate_percent, status, comments, created_at, updated_at"
+      )
+      .eq("project_id", project.id)
+      .order("created_at", { ascending: false });
 
     setLoading(false);
+
     if (error) {
-      alert("Erreur chargement clients : " + error.message);
+      alert("Erreur chargement crédits : " + error.message);
       return;
     }
-    setRows((data || []) as ClientRow[]);
+    setRows((data || []) as Loan[]);
   };
 
   useEffect(() => {
     load();
-  }, []);
+  }, [project.id]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     return rows
-      .filter((r) => (onlyActive ? r.status !== "archived" : true))
+      .filter((r) => (onlyValidated ? r.status === "validated" : true))
       .filter((r) => {
         if (!term) return true;
-        const hay = [r.name, r.radical || "", r.segment || "", r.status || "", r.notes || ""].join(" ").toLowerCase();
+        const hay = [
+          r.facility_type,
+          r.currency,
+          r.status,
+          r.comments || "",
+        ]
+          .join(" ")
+          .toLowerCase();
         return hay.includes(term);
       });
-  }, [rows, q, onlyActive]);
+  }, [rows, q, onlyValidated]);
 
-  const stats = useMemo(() => {
-    const active = filtered.filter((r) => r.status !== "archived").length;
-    const archived = filtered.filter((r) => r.status === "archived").length;
-    return { total: filtered.length, active, archived };
+  const totals = useMemo(() => {
+    const byCcy: Record<string, number> = {};
+    for (const r of filtered) {
+      const c = (r.currency || "MAD").toUpperCase();
+      byCcy[c] = (byCcy[c] || 0) + Number(r.amount || 0);
+    }
+    return byCcy;
   }, [filtered]);
 
   const openNew = () => {
@@ -69,40 +96,55 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
     setOpen(true);
   };
 
-  const openEdit = (r: ClientRow) => {
+  const openEdit = (r: Loan) => {
     setEditing(r);
     setForceCreate(false);
     setOpen(true);
   };
 
-  const openDuplicate = (r: ClientRow) => {
+  const openDuplicate = (r: Loan) => {
     setEditing(r);
-    setForceCreate(true);
+    setForceCreate(true); // force création
     setOpen(true);
   };
 
-  const toggleArchive = async (r: ClientRow) => {
+  const del = async (r: Loan) => {
     if (!r.id) return;
-    const next = r.status === "archived" ? "active" : "archived";
-    const { error } = await supabase.from(CLIENTS_TABLE).update({ status: next }).eq("id", r.id);
-    if (error) return alert("Erreur MAJ statut : " + error.message);
-    await load();
+    if (!confirm("Supprimer ce crédit ?")) return;
+
+    const { error } = await supabase.from(LOANS_TABLE).delete().eq("id", r.id);
+    if (error) {
+      alert("Erreur suppression : " + error.message);
+      return;
+    }
+    load();
   };
 
-  const del = async (r: ClientRow) => {
+  const quickToggleValidate = async (r: Loan) => {
     if (!r.id) return;
-    if (!confirm("Supprimer ce client ? (Supprime aussi ses projets si FK cascade)")) return;
-    const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", r.id);
-    if (error) return alert("Erreur suppression : " + error.message);
-    await load();
+    const next = r.status === "validated" ? "draft" : "validated";
+    const { error } = await supabase
+      .from(LOANS_TABLE)
+      .update({ status: next })
+      .eq("id", r.id);
+
+    if (error) {
+      alert("Erreur MAJ statut : " + error.message);
+      return;
+    }
+    load();
   };
 
   return (
     <Card>
       <CardHeader className="py-3">
         <CardTitle className="text-sm flex items-center justify-between gap-2">
-          <span>1. Client</span>
-          <Button size="sm" onClick={openNew}>+ Ajouter</Button>
+          <span>2. Crédits / Financements</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={openNew}>
+              + Ajouter
+            </Button>
+          </div>
         </CardTitle>
       </CardHeader>
 
@@ -110,22 +152,33 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
         {/* Toolbar ultra compacte */}
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            className="h-8 w-[280px]"
-            placeholder="Recherche (nom, radical, segment, notes)…"
+            className="h-8 w-[260px]"
+            placeholder="Rechercher (type, devise, statut, commentaire)…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <Button size="sm" variant="outline" onClick={() => setOnlyActive((v) => !v)}>
-            {onlyActive ? "Actifs" : "Tous"}
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setOnlyValidated((v) => !v)}
+          >
+            {onlyValidated ? "Voir tout" : "Validés"}
           </Button>
+
           <Button size="sm" variant="outline" onClick={load} disabled={loading}>
             {loading ? "..." : "Rafraîchir"}
           </Button>
 
-          <div className="ml-auto flex items-center gap-2">
-            <Badge className="text-[10px] px-2 py-0">Total: {stats.total}</Badge>
-            <Badge className="text-[10px] px-2 py-0">Actifs: {stats.active}</Badge>
-            <Badge className="text-[10px] px-2 py-0">Archivés: {stats.archived}</Badge>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Badge className="text-[10px] px-2 py-0">
+              Lignes: {filtered.length}
+            </Badge>
+            {Object.keys(totals).map((ccy) => (
+              <Badge key={ccy} className="text-[10px] px-2 py-0">
+                Total {ccy}: {totals[ccy].toLocaleString("fr-MA")}
+              </Badge>
+            ))}
           </div>
         </div>
 
@@ -134,9 +187,11 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead>Radical</TableHead>
-                <TableHead>Segment</TableHead>
+                <TableHead>Facilité</TableHead>
+                <TableHead>Montant</TableHead>
+                <TableHead>Maturité</TableHead>
+                <TableHead>Marge</TableHead>
+                <TableHead>Taux</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -145,59 +200,82 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-[11px]">Chargement…</TableCell>
+                  <TableCell colSpan={7} className="text-center text-[11px]">
+                    Chargement…
+                  </TableCell>
                 </TableRow>
               )}
 
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-[11px] text-slate-500">
-                    Aucun client. Clique sur “+ Ajouter”.
+                  <TableCell colSpan={7} className="text-center text-[11px] text-slate-500">
+                    Aucun crédit. Clique sur “+ Ajouter”.
                   </TableCell>
                 </TableRow>
               )}
 
               {!loading &&
-                filtered.map((r) => {
-                  const active = selectedClient?.id === r.id;
-                  return (
-                    <TableRow key={r.id} className={active ? "bg-slate-50" : ""}>
-                      <TableCell>
-                        <div className="font-medium text-[12px]">{r.name}</div>
-                        {r.notes ? <div className="text-[11px] text-slate-500 line-clamp-1">{r.notes}</div> : null}
-                      </TableCell>
-                      <TableCell>{r.radical ?? "—"}</TableCell>
-                      <TableCell>{r.segment ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge className="text-[10px] px-2 py-0">{r.status === "archived" ? "Archivé" : "Actif"}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => onSelect(r)}>
-                            Sélection
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
-                            Ouvrir
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openDuplicate(r)}>
-                            Dupliquer
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => toggleArchive(r)}>
-                            {r.status === "archived" ? "Désarch." : "Archiver"}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => del(r)}>
-                            Suppr.
-                          </Button>
+                filtered.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>
+                      <div className="font-medium text-[12px]">{r.facility_type}</div>
+                      {r.comments ? (
+                        <div className="text-[11px] text-slate-500 line-clamp-1">
+                          {r.comments}
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                      ) : null}
+                    </TableCell>
+
+                    <TableCell className="font-semibold">
+                      {fmtMoney(Number(r.amount || 0), r.currency)}
+                    </TableCell>
+
+                    <TableCell>
+                      {r.maturity_months != null ? `${r.maturity_months} m` : "—"}
+                    </TableCell>
+
+                    <TableCell>
+                      {r.margin_bps != null ? `${r.margin_bps} bps` : "—"}
+                    </TableCell>
+
+                    <TableCell>
+                      {r.rate_percent != null ? `${Number(r.rate_percent).toFixed(2)}%` : "—"}
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge className="text-[10px] px-2 py-0">
+                        {r.status === "validated"
+                          ? "Validé"
+                          : r.status === "cancelled"
+                          ? "Annulé"
+                          : "Brouillon"}
+                      </Badge>
+                    </TableCell>
+
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
+                          Ouvrir
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => openDuplicate(r)}>
+                          Dupliquer
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => quickToggleValidate(r)}>
+                          {r.status === "validated" ? "Dévalider" : "Valider"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => del(r)}>
+                          Suppr.
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
 
-        <ClientFormModal
+        {/* Modal création/édition/duplication */}
+        <CreditFormModal
           open={open}
           onOpenChange={(o) => {
             setOpen(o);
@@ -206,9 +284,12 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
               setForceCreate(false);
             }
           }}
-          client={editing}
+          projectId={String(project.id)}
+          loan={editing}
           forceCreate={forceCreate}
-          onSaved={load}
+          onSaved={async () => {
+            await load();
+          }}
         />
       </CardContent>
     </Card>
