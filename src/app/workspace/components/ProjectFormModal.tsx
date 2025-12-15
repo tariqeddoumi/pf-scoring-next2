@@ -38,7 +38,7 @@ export default function ProjectFormModal({
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
   const [type, setType] = useState("");
-  const [status, setStatus] = useState<ProjectRow["status"]>("active");
+  const [status, setStatus] = useState<ProjectRow["status"]>("draft");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -48,13 +48,13 @@ export default function ProjectFormModal({
       setName(project.name ?? "");
       setCity(project.city ?? "");
       setType(project.type ?? "");
-      setStatus(project.status ?? "active");
+      setStatus(project.status ?? "draft");
       setNotes(project.notes ?? "");
     } else {
       setName("");
       setCity("");
       setType("");
-      setStatus("active");
+      setStatus("draft");
       setNotes("");
     }
   }, [open, project]);

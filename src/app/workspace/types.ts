@@ -1,26 +1,27 @@
+// src/app/workspace/types.ts
+
 export type ClientStatus = "active" | "archived";
+export type ProjectStatus = "draft" | "validated" | "archived";
 
 export type ClientRow = {
   id: string;
-  radical: string | null;   // ✅ ici
   name: string;
-  segment?: string | null;
-  status: "active" | "archived";
-  notes?: string | null;
+  radical: string | null;
+  segment: string | null;
+  status: ClientStatus;
+  notes: string | null;
   created_at?: string;
   updated_at?: string;
 };
-
 
 export type ProjectRow = {
   id: string;
   client_id: string;
   name: string;
-  project_type?: string | null;
-  city?: string | null;
-  total_cost?: number | null;
-  financing_amount?: number | null;
-  status?: "draft" | "validated" | "archived" | null;
+  city: string | null;
+  type: string | null;      // ✅ AJOUT
+  status: ProjectStatus;
+  notes: string | null;     // ✅ AJOUT
   created_at?: string;
   updated_at?: string;
 };
