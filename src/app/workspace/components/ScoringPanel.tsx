@@ -13,6 +13,8 @@ import {
   TableCell,
 } from "@/components/ui/table";
 
+import type { ProjectRow } from "./ProjectFormModal";
+
 export type Evaluation = {
   id: string;
   project_id: string;
@@ -29,7 +31,7 @@ export type Evaluation = {
 };
 
 type Props = {
-  project: Project;
+  project: ProjectRow;
 };
 
 export default function ScoringPanel({ project }: Props) {
