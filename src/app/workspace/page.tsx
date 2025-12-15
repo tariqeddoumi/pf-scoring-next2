@@ -11,8 +11,13 @@ import ScoringPanel from "./components/ScoringPanel";
 export default function WorkspacePage() {
   const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
   const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null);
+    
+    <div className="p-6 bg-red-500 text-white rounded-xl">
+      TEST TAILWIND
+    </div>
 
   return (
+
     <div className="space-y-6 p-4 max-w-6xl mx-auto">
       <h1 className="text-xl font-bold">🧠 Espace de travail — PF Scoring V5</h1>
 
