@@ -1,61 +1,39 @@
 "use client";
 
 import { useState } from "react";
-import ClientSelector from "./components/ClientSelector";
-import ProjectSelector from "./components/ProjectSelector";
+import ClientTable from "./components/ClientTable";
+import type { ClientRow } from "./components/ClientFormModal";
+import ProjectTable from "./components/ProjectTable";
+import type { ProjectRow } from "./components/ProjectFormModal";
 import CreditTable from "./components/CreditTable";
 import ScoringPanel from "./components/ScoringPanel";
 
-export type Client = {
-  id: string;
-  name: string;
-  radical: string;
-  segment?: string;
-};
-
-export type Project = {
-  id: string;
-  client_id: string;
-  name: string;
-  city?: string;
-  type?: string;
-};
-
 export default function WorkspacePage() {
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null);
 
   return (
-    <div className="space-y-6 p-4 max-w-5xl mx-auto">
+    <div className="space-y-6 p-4 max-w-6xl mx-auto">
       <h1 className="text-xl font-bold">🧠 Espace de travail — PF Scoring V5</h1>
 
-      {/* 1️⃣ Client */}
-      <ClientSelector
+      <ClientTable
         selectedClient={selectedClient}
-        onClientSelected={(c) => {
+        onSelect={(c) => {
           setSelectedClient(c);
-          setSelectedProject(null); // Reset project
+          setSelectedProject(null);
         }}
       />
 
-      {/* 2️⃣ Project */}
       {selectedClient && (
-        <ProjectSelector
+        <ProjectTable
           client={selectedClient}
           selectedProject={selectedProject}
-          onProjectSelected={(p) => setSelectedProject(p)}
+          onSelect={(p) => setSelectedProject(p)}
         />
       )}
 
-      {/* 3️⃣ Table des crédits */}
-      {selectedProject && (
-        <CreditTable project={selectedProject} />
-      )}
-
-      {/* 4️⃣ Scoring */}
-      {selectedProject && (
-        <ScoringPanel project={selectedProject} />
-      )}
+      {selectedProject && <CreditTable project={selectedProject as any} />}
+      {selectedProject && <ScoringPanel project={selectedProject as any} />}
     </div>
   );
 }

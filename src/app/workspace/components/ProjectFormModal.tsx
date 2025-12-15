@@ -1,86 +1,159 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { Client, Project } from "../page";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import type { ClientRow } from "./ClientFormModal";
+
+const PROJECTS_TABLE = "projects";
+
+export type ProjectRow = {
+  id?: string;
+  client_id: string;
+  name: string;
+  city: string | null;
+  type: string | null;
+  status: "active" | "archived";
+  notes: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
 
 type Props = {
-  open?: boolean;
-  onOpenChange?: (v: boolean) => void;
-  client: Client;
-  onCreated: () => Promise<void>;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+
+  client: ClientRow;
+  project: ProjectRow | null;
+  forceCreate?: boolean;
+
+  onSaved: () => Promise<void> | void;
 };
 
 export default function ProjectFormModal({
   open,
   onOpenChange,
   client,
-  onCreated,
+  project,
+  forceCreate,
+  onSaved,
 }: Props) {
-  const [internalOpen, setInternalOpen] = useState(false);
-  const isOpen = open !== undefined ? open : internalOpen;
-  const setOpen = onOpenChange || setInternalOpen;
+  const isEdit = !!project?.id && !forceCreate;
 
-  const [form, setForm] = useState({
-    name: "",
-    city: "",
-    type: "",
-  });
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+  const [city, setCity] = useState("");
+  const [type, setType] = useState("");
+  const [status, setStatus] = useState<ProjectRow["status"]>("active");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+
+    if (project) {
+      setName(project.name ?? "");
+      setCity(project.city ?? "");
+      setType(project.type ?? "");
+      setStatus(project.status ?? "active");
+      setNotes(project.notes ?? "");
+    } else {
+      setName("");
+      setCity("");
+      setType("");
+      setStatus("active");
+      setNotes("");
+    }
+  }, [open, project]);
+
+  const canSave = useMemo(() => name.trim().length > 0, [name]);
 
   const save = async () => {
-    if (!form.name.trim()) return;
+    if (!canSave) return alert("Nom projet obligatoire.");
 
-    await supabase.from("projects").insert({
-      client_id: client.id,
-      name: form.name,
-      city: form.city || null,
-      type: form.type || null,
-    });
+    setSaving(true);
 
-    await onCreated();
-    setForm({ name: "", city: "", type: "" });
-    setOpen(false);
+    const payload: Partial<ProjectRow> = {
+      client_id: client.id as string,
+      name: name.trim(),
+      city: city.trim() ? city.trim() : null,
+      type: type.trim() ? type.trim() : null,
+      status,
+      notes: notes.trim() ? notes.trim() : null,
+    };
+
+    let error: any = null;
+
+    if (isEdit && project?.id) {
+      const { error: e } = await supabase.from(PROJECTS_TABLE).update(payload).eq("id", project.id);
+      error = e;
+    } else {
+      const { error: e } = await supabase.from(PROJECTS_TABLE).insert(payload);
+      error = e;
+    }
+
+    setSaving(false);
+
+    if (error) return alert("Erreur enregistrement projet : " + error.message);
+
+    await onSaved();
+    onOpenChange(false);
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setOpen}>
-      <DialogContent className="max-w-sm">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Nouveau projet</DialogTitle>
+          <DialogTitle className="text-sm flex items-center justify-between gap-2">
+            <span>{isEdit ? "Modifier projet" : forceCreate ? "Dupliquer projet" : "Nouveau projet"}</span>
+            <Badge className="text-[10px] px-2 py-0">Client: {(client.name || "").slice(0, 18)}</Badge>
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3 text-xs">
-          <Input
-            placeholder="Nom du projet"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
+        <div className="grid grid-cols-12 gap-3 text-xs">
+          <div className="col-span-6">
+            <div className="mb-1 font-medium">Nom du projet</div>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Centrale solaire X" />
+          </div>
 
-          <Input
-            placeholder="Ville"
-            value={form.city}
-            onChange={(e) => setForm({ ...form, city: e.target.value })}
-          />
+          <div className="col-span-3">
+            <div className="mb-1 font-medium">Statut</div>
+            <select
+              className="border rounded px-2 py-2 w-full"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as ProjectRow["status"])}
+            >
+              <option value="active">Actif</option>
+              <option value="archived">Archivé</option>
+            </select>
+          </div>
 
-          <Input
-            placeholder="Type (ex : Énergie, PPP...)"
-            value={form.type}
-            onChange={(e) => setForm({ ...form, type: e.target.value })}
-          />
+          <div className="col-span-3">
+            <div className="mb-1 font-medium">Ville</div>
+            <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Casablanca…" />
+          </div>
 
-          <button
-            className="w-full bg-blue-600 mt-2 text-white p-2 rounded"
-            onClick={save}
-          >
-            Enregistrer
-          </button>
+          <div className="col-span-6">
+            <div className="mb-1 font-medium">Type</div>
+            <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="PPP, Énergie, Immobilier…" />
+          </div>
+
+          <div className="col-span-12">
+            <div className="mb-1 font-medium">Notes</div>
+            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Résumé projet, risques, sponsors…" />
+          </div>
+
+          <div className="col-span-12 flex justify-end gap-2 pt-1">
+            <Button size="sm" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+              Annuler
+            </Button>
+            <Button size="sm" onClick={save} disabled={saving || !canSave}>
+              {saving ? "Enregistrement..." : isEdit ? "Mettre à jour" : "Enregistrer"}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

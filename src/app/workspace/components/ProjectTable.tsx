@@ -7,44 +7,44 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableHead, TableRow, TableBody, TableCell } from "@/components/ui/table";
-import ClientFormModal, { ClientRow } from "./ClientFormModal";
+import type { ClientRow } from "./ClientFormModal";
+import ProjectFormModal, { ProjectRow } from "./ProjectFormModal";
 
-const CLIENTS_TABLE = "clients";
+const PROJECTS_TABLE = "projects";
 
 type Props = {
-  selectedClient: ClientRow | null;
-  onSelect: (c: ClientRow) => void;
+  client: ClientRow;
+  selectedProject: ProjectRow | null;
+  onSelect: (p: ProjectRow) => void;
 };
 
-export default function ClientTable({ selectedClient, onSelect }: Props) {
-  const [rows, setRows] = useState<ClientRow[]>([]);
+export default function ProjectTable({ client, selectedProject, onSelect }: Props) {
+  const [rows, setRows] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [q, setQ] = useState("");
   const [onlyActive, setOnlyActive] = useState(true);
 
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<ClientRow | null>(null);
+  const [editing, setEditing] = useState<ProjectRow | null>(null);
   const [forceCreate, setForceCreate] = useState(false);
 
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase
-      .from(CLIENTS_TABLE)
-      .select("id,name,radical,segment,status,notes,created_at,updated_at")
+      .from(PROJECTS_TABLE)
+      .select("id,client_id,name,city,type,status,notes,created_at,updated_at")
+      .eq("client_id", client.id)
       .order("updated_at", { ascending: false });
 
     setLoading(false);
-    if (error) {
-      alert("Erreur chargement clients : " + error.message);
-      return;
-    }
-    setRows((data || []) as ClientRow[]);
+    if (error) return alert("Erreur chargement projets : " + error.message);
+    setRows((data || []) as ProjectRow[]);
   };
 
   useEffect(() => {
     load();
-  }, []);
+  }, [client.id]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -52,7 +52,7 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
       .filter((r) => (onlyActive ? r.status !== "archived" : true))
       .filter((r) => {
         if (!term) return true;
-        const hay = [r.name, r.radical || "", r.segment || "", r.status || "", r.notes || ""].join(" ").toLowerCase();
+        const hay = [r.name, r.city || "", r.type || "", r.status || "", r.notes || ""].join(" ").toLowerCase();
         return hay.includes(term);
       });
   }, [rows, q, onlyActive]);
@@ -69,30 +69,30 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
     setOpen(true);
   };
 
-  const openEdit = (r: ClientRow) => {
+  const openEdit = (r: ProjectRow) => {
     setEditing(r);
     setForceCreate(false);
     setOpen(true);
   };
 
-  const openDuplicate = (r: ClientRow) => {
+  const openDuplicate = (r: ProjectRow) => {
     setEditing(r);
     setForceCreate(true);
     setOpen(true);
   };
 
-  const toggleArchive = async (r: ClientRow) => {
+  const toggleArchive = async (r: ProjectRow) => {
     if (!r.id) return;
     const next = r.status === "archived" ? "active" : "archived";
-    const { error } = await supabase.from(CLIENTS_TABLE).update({ status: next }).eq("id", r.id);
+    const { error } = await supabase.from(PROJECTS_TABLE).update({ status: next }).eq("id", r.id);
     if (error) return alert("Erreur MAJ statut : " + error.message);
     await load();
   };
 
-  const del = async (r: ClientRow) => {
+  const del = async (r: ProjectRow) => {
     if (!r.id) return;
-    if (!confirm("Supprimer ce client ? (Supprime aussi ses projets si FK cascade)")) return;
-    const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", r.id);
+    if (!confirm("Supprimer ce projet ?")) return;
+    const { error } = await supabase.from(PROJECTS_TABLE).delete().eq("id", r.id);
     if (error) return alert("Erreur suppression : " + error.message);
     await load();
   };
@@ -101,17 +101,17 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
     <Card>
       <CardHeader className="py-3">
         <CardTitle className="text-sm flex items-center justify-between gap-2">
-          <span>1. Client</span>
+          <span>1.b Projets du client</span>
           <Button size="sm" onClick={openNew}>+ Ajouter</Button>
         </CardTitle>
       </CardHeader>
 
       <CardContent className="space-y-3 text-xs">
-        {/* Toolbar ultra compacte */}
+        {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
           <Input
             className="h-8 w-[280px]"
-            placeholder="Recherche (nom, radical, segment, notes)…"
+            placeholder="Recherche (nom, ville, type, notes)…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -129,14 +129,13 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
           </div>
         </div>
 
-        {/* Table */}
         <div className="border rounded-md overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead>Radical</TableHead>
-                <TableHead>Segment</TableHead>
+                <TableHead>Projet</TableHead>
+                <TableHead>Ville</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -152,42 +151,34 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-[11px] text-slate-500">
-                    Aucun client. Clique sur “+ Ajouter”.
+                    Aucun projet. Clique sur “+ Ajouter”.
                   </TableCell>
                 </TableRow>
               )}
 
               {!loading &&
                 filtered.map((r) => {
-                  const active = selectedClient?.id === r.id;
+                  const active = selectedProject?.id === r.id;
                   return (
                     <TableRow key={r.id} className={active ? "bg-slate-50" : ""}>
                       <TableCell>
                         <div className="font-medium text-[12px]">{r.name}</div>
                         {r.notes ? <div className="text-[11px] text-slate-500 line-clamp-1">{r.notes}</div> : null}
                       </TableCell>
-                      <TableCell>{r.radical ?? "—"}</TableCell>
-                      <TableCell>{r.segment ?? "—"}</TableCell>
+                      <TableCell>{r.city ?? "—"}</TableCell>
+                      <TableCell>{r.type ?? "—"}</TableCell>
                       <TableCell>
                         <Badge className="text-[10px] px-2 py-0">{r.status === "archived" ? "Archivé" : "Actif"}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => onSelect(r)}>
-                            Sélection
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
-                            Ouvrir
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openDuplicate(r)}>
-                            Dupliquer
-                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => onSelect(r)}>Sélection</Button>
+                          <Button size="sm" variant="outline" onClick={() => openEdit(r)}>Ouvrir</Button>
+                          <Button size="sm" variant="outline" onClick={() => openDuplicate(r)}>Dupliquer</Button>
                           <Button size="sm" variant="outline" onClick={() => toggleArchive(r)}>
                             {r.status === "archived" ? "Désarch." : "Archiver"}
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => del(r)}>
-                            Suppr.
-                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => del(r)}>Suppr.</Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -197,7 +188,7 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
           </Table>
         </div>
 
-        <ClientFormModal
+        <ProjectFormModal
           open={open}
           onOpenChange={(o) => {
             setOpen(o);
@@ -206,7 +197,8 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
               setForceCreate(false);
             }
           }}
-          client={editing}
+          client={client}
+          project={editing}
           forceCreate={forceCreate}
           onSaved={load}
         />
