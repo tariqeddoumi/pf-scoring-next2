@@ -12,8 +12,6 @@ import {
   TableBody,
   TableCell,
 } from "@/components/ui/table";
-import type { Project } from "../page";
-import EvaluationFormDrawer from "./EvaluationFormDrawer";
 
 export type Evaluation = {
   id: string;
