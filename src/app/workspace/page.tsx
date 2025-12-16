@@ -1,9 +1,16 @@
+// src/app/workspace/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Separator } from "@/components/ui/separator";
+import { useEffect, useMemo, useState } from "react";
+
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 import ClientTable from "./components/ClientTable";
 import ProjectTable from "./components/ProjectTable";
@@ -15,115 +22,174 @@ import type { ClientRow, ProjectRow } from "./types";
 
 export default function WorkspacePage() {
   const [selectedClient, setSelectedClient] = useState<ClientRow | null>(null);
-  const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(
+    null
+  );
 
-  const ctxBadges = useMemo(() => {
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={selectedClient ? "default" : "secondary"}>
-          Client: {selectedClient ? selectedClient.radical : "—"}
-        </Badge>
-        <Badge variant={selectedProject ? "default" : "secondary"}>
-          Projet: {selectedProject ? selectedProject.project_code : "—"}
-        </Badge>
-      </div>
-    );
-  }, [selectedClient, selectedProject]);
+  // si tu veux forcer un refresh complet: incrémente ce key
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const headerClient = useMemo(() => {
+    if (!selectedClient) return "—";
+    return `${selectedClient.radical ?? "—"}${
+      selectedClient.name ? " · " + selectedClient.name : ""
+    }`;
+  }, [selectedClient]);
+
+  const headerProject = useMemo(() => {
+    if (!selectedProject) return "—";
+    return `${(selectedProject.project_code ?? "—")} · ${
+      selectedProject.name ?? "Projet"
+    }`;
+  }, [selectedProject]);
+
+  // changement client => reset projet
+  useEffect(() => {
+    setSelectedProject(null);
+  }, [selectedClient?.id]);
+
+  function resetAll() {
+    setSelectedClient(null);
+    setSelectedProject(null);
+    setRefreshKey((k) => k + 1);
+  }
 
   return (
     <div className="min-h-screen">
-      {/* Header compact */}
+      {/* Header */}
       <div className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🧠</span>
-                <h1 className="truncate text-xl font-semibold">Espace de travail — PF Scoring V5</h1>
-              </div>
-              <p className="text-sm text-slate-600">
-                Ultra compact : client → projets → scoring → crédits → synthèse
-              </p>
+        <div className="mx-auto max-w-[1400px] px-4 py-3 flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-2xl font-bold flex items-center gap-2">
+              <span>🧠</span>
+              <span>Espace de travail — PF Scoring V5</span>
             </div>
-            {ctxBadges}
+            <div className="text-sm text-muted-foreground">
+              Ultra compact : client → projets → scoring → crédits → synthèse
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge
+              variant={selectedClient ? "default" : "secondary"}
+              className="whitespace-nowrap"
+            >
+              Client: {headerClient}
+            </Badge>
+            <Badge
+              variant={selectedProject ? "default" : "secondary"}
+              className="whitespace-nowrap"
+            >
+              Projet: {headerProject}
+            </Badge>
+            <Button variant="outline" onClick={resetAll}>
+              Réinitialiser
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-4">
-        <Accordion type="multiple" defaultValue={["client", "projects", "scoring", "credits", "summary"]} className="space-y-3">
-
-          <AccordionItem value="client" className="rounded-xl border bg-white">
-            <AccordionTrigger className="px-4 py-3 text-base font-medium">
+      {/* Body */}
+      <div className="mx-auto max-w-[1400px] px-4 py-4">
+        <Accordion
+          type="multiple"
+          defaultValue={["clients", "projects"]}
+          className="space-y-3"
+        >
+          {/* 1) Clients */}
+          <AccordionItem value="clients" className="border rounded-md">
+            <AccordionTrigger className="px-3 py-2">
               1) Clients
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4">
+            <AccordionContent className="px-3 pb-3">
               <ClientTable
+                key={`clients-${refreshKey}`}
                 selectedClient={selectedClient}
-                onSelect={(c) => {
+                onSelect={(c: ClientRow) => {
                   setSelectedClient(c);
-                  setSelectedProject(null);
                 }}
               />
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="projects" className="rounded-xl border bg-white">
-            <AccordionTrigger className="px-4 py-3 text-base font-medium">
+          {/* 2) Projets du client */}
+          <AccordionItem value="projects" className="border rounded-md">
+            <AccordionTrigger className="px-3 py-2">
               2) Projets du client
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4">
+            <AccordionContent className="px-3 pb-3">
               {!selectedClient ? (
-                <div className="text-sm text-slate-600">Sélectionne d’abord un client.</div>
+                <div className="text-sm text-muted-foreground">
+                  Sélectionnez d’abord un client.
+                </div>
               ) : (
                 <ProjectTable
+                  key={`projects-${selectedClient.id}-${refreshKey}`}
                   client={selectedClient}
                   selectedProject={selectedProject}
-                  onSelect={(p) => setSelectedProject(p)}
+                  onSelect={(p: ProjectRow) => setSelectedProject(p)}
                 />
               )}
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="scoring" className="rounded-xl border bg-white">
-            <AccordionTrigger className="px-4 py-3 text-base font-medium">
+          {/* 3) Scoring */}
+          <AccordionItem value="scoring" className="border rounded-md">
+            <AccordionTrigger className="px-3 py-2">
               3) Scoring
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4">
+            <AccordionContent className="px-3 pb-3">
               {!selectedProject ? (
-                <div className="text-sm text-slate-600">Sélectionne un projet pour accéder au scoring.</div>
+                <div className="text-sm text-muted-foreground">
+                  Sélectionnez un client puis un projet pour accéder au scoring.
+                </div>
               ) : (
-                <ScoringPanel project={selectedProject} />
+                <ScoringPanel
+                  key={`scoring-${selectedProject.id}-${refreshKey}`}
+                  project={selectedProject}
+                />
               )}
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="credits" className="rounded-xl border bg-white">
-            <AccordionTrigger className="px-4 py-3 text-base font-medium">
+          {/* 4) Crédits */}
+          <AccordionItem value="credits" className="border rounded-md">
+            <AccordionTrigger className="px-3 py-2">
               4) Crédits & Financements
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4">
+            <AccordionContent className="px-3 pb-3">
               {!selectedProject ? (
-                <div className="text-sm text-slate-600">Sélectionne un projet pour voir les crédits.</div>
+                <div className="text-sm text-muted-foreground">
+                  Sélectionnez un projet pour voir/éditer les crédits.
+                </div>
               ) : (
-                <CreditTable project={selectedProject} />
+                <CreditTable
+                  key={`credits-${selectedProject.id}-${refreshKey}`}
+                  project={selectedProject}
+                />
               )}
             </AccordionContent>
           </AccordionItem>
 
-          <AccordionItem value="summary" className="rounded-xl border bg-white">
-            <AccordionTrigger className="px-4 py-3 text-base font-medium">
+          {/* 5) Synthèse */}
+          <AccordionItem value="summary" className="border rounded-md">
+            <AccordionTrigger className="px-3 py-2">
               5) Synthèse & Historique
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4">
-              <SummaryPanel client={selectedClient} project={selectedProject} />
-              <Separator className="mt-4" />
-              <p className="mt-3 text-xs text-slate-500">
-                Next: export PDF / verrouillage validation / workflow (draft → validé → archivé).
-              </p>
+            <AccordionContent className="px-3 pb-3">
+              {!selectedClient || !selectedProject ? (
+                <div className="text-sm text-muted-foreground">
+                  Sélectionnez un client et un projet pour afficher la synthèse.
+                </div>
+              ) : (
+                <SummaryPanel
+                  key={`summary-${selectedProject.id}-${refreshKey}`}
+                  client={selectedClient}
+                  project={selectedProject}
+                />
+              )}
             </AccordionContent>
           </AccordionItem>
-
         </Accordion>
       </div>
     </div>

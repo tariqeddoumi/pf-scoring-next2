@@ -7,11 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { ClientRow } from "../types";
+import type { ClientRow, ProjectRow, LoanRow } from "../types";
 
 const PROJECTS_TABLE = "projects";
-
-import type { ProjectRow } from "../types";
 
 type Props = {
   open: boolean;

@@ -1,57 +1,89 @@
 "use client";
 
+import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import type { ClientRow, ProjectRow } from "../types";
 
 type Props = {
   client: ClientRow | null;
   project: ProjectRow | null;
+  onClearClient?: () => void;
+  onClearProject?: () => void;
 };
 
-export default function SummaryPanel({ client, project }: Props) {
-  if (!client || !project) {
-    return (
-      <div className="text-sm text-slate-600">
-        Sélectionnez un client et un projet pour afficher la synthèse.
-      </div>
-    );
+function fmtMoney(v?: number | null) {
+  if (v === null || v === undefined) return "—";
+  try {
+    return new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD" }).format(v);
+  } catch {
+    return `${v} MAD`;
   }
+}
 
+export default function SummaryPanel({ client, project, onClearClient, onClearProject }: Props) {
   return (
-    <Card className="border-slate-200">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-2">
-          📊 Synthèse décisionnelle
-          <Badge variant="secondary">V5</Badge>
-        </CardTitle>
+    <Card className="border bg-white/70 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <CardHeader className="py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">Synthèse rapide</CardTitle>
+
+          <div className="flex items-center gap-2">
+            <Badge variant={client ? "default" : "secondary"}>
+              Client: {client?.radical ?? "—"}
+            </Badge>
+            <Badge variant={project ? "default" : "secondary"}>
+              Projet: {project?.project_code ?? project?.id?.slice(0, 8) ?? "—"}
+            </Badge>
+
+            {client && (
+              <Button size="sm" variant="outline" onClick={onClearClient}>
+                Reset client
+              </Button>
+            )}
+            {project && (
+              <Button size="sm" variant="outline" onClick={onClearProject}>
+                Reset projet
+              </Button>
+            )}
+          </div>
+        </div>
       </CardHeader>
 
-      <CardContent className="grid gap-4 md:grid-cols-2 text-sm">
-        {/* Identité */}
-        <div className="space-y-1">
-          <div><strong>Client :</strong> {client.name} ({client.radical})</div>
-          <div><strong>Segment :</strong> {client.segment ?? "—"}</div>
-        </div>
+      <Separator />
 
-        <div className="space-y-1">
-          <div><strong>Projet :</strong> {project.name}</div>
-          <div><strong>Type :</strong> {project.type ?? "—"}</div>
-        </div>
-
-        {/* Décision */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <strong>Score :</strong>
-            <Badge className="bg-emerald-600 text-white">A</Badge>
+      <CardContent className="py-3">
+        <div className="grid gap-3 md:grid-cols-3">
+          {/* Bloc client */}
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">Client</div>
+            <div className="font-medium">{client?.name ?? "—"}</div>
+            <div className="text-sm text-muted-foreground">
+              Segment: {client?.segment ?? "—"} • Statut: {client?.status ?? "—"}
+            </div>
           </div>
-          <div><strong>Statut :</strong> Draft</div>
-        </div>
 
-        {/* Chiffres */}
-        <div className="space-y-1">
-          <div><strong>Coût total :</strong> {project.total_cost ?? "—"}</div>
-          <div><strong>Financement :</strong> {project.financing_amount ?? "—"}</div>
+          {/* Bloc projet */}
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">Projet</div>
+            <div className="font-medium">{project?.name ?? "—"}</div>
+            <div className="text-sm text-muted-foreground">
+              Ville: {project?.city ?? "—"} • Type: {project?.type ?? project?.project_type ?? "—"}
+            </div>
+          </div>
+
+          {/* Chiffres */}
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">Chiffres</div>
+            <div className="text-sm">
+              Coût total: <span className="font-medium">{fmtMoney(project?.total_cost)}</span>
+            </div>
+            <div className="text-sm">
+              Financement: <span className="font-medium">{fmtMoney(project?.financing_amount)}</span>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

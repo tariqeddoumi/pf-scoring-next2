@@ -14,8 +14,8 @@ import {
   TableBody,
   TableCell,
 } from "@/components/ui/table";
-import CreditFormModal, { Loan } from "./CreditFormModal";
-import type { ProjectRow } from "../types";
+import CreditFormModal , {Loan} from "./CreditFormModal";
+import type { ClientRow, ProjectRow, LoanRow } from "../types";
 
 const LOANS_TABLE = "project_loans"; // <-- change to "loans" if needed
 

@@ -13,7 +13,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 
-import type { ProjectRow } from "../types";
+import type { ClientRow, ProjectRow, LoanRow } from "../types";
 
 export type Evaluation = {
   id: string;

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableHead, TableRow, TableBody, TableCell } from "@/components/ui/table";
 import type { ClientRow } from "../types";
 import ProjectFormModal from "./ProjectFormModal";
-import type { ProjectRow } from "../types";
+import type { ClientRow, ProjectRow, LoanRow } from "../types";
 
 const PROJECTS_TABLE = "projects";
 

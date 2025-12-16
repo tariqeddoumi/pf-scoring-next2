@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
+import type { ClientRow, ProjectRow, LoanRow } from "../types";
 const LOANS_TABLE = "project_loans"; // <-- change to "loans" if needed
 
 export type Loan = {
