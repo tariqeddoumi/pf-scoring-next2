@@ -2,281 +2,155 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import type { LoanRow, LoanStatus } from "../types";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import type { ClientRow, ProjectRow, LoanRow } from "../types";
-const LOANS_TABLE = "project_loans"; // <-- change to "loans" if needed
-
-export type Loan = {
-  id?: string;
-  project_id: string;
-  facility_type: string;
-  amount: number;
-  currency: string;
-  maturity_months: number | null;
-  margin_bps: number | null;
-  rate_percent: number | null;
-  status: "draft" | "validated" | "cancelled";
-  comments: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
+import { Label } from "@/components/ui/label";
 
 type Props = {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (v: boolean) => void;
   projectId: string;
-
-  /** null = création */
-  loan: Loan | null;
-
-  /** callback après save réussi */
+  loan: LoanRow | null;
   onSaved: () => Promise<void> | void;
-
-  /** optionnel : mode duplication (pré-remplit mais force création) */
-  forceCreate?: boolean;
 };
 
-const DEFAULT_CURRENCY = "MAD";
-
-function toNumberOrNull(v: string) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-export default function CreditFormModal({
-  open,
-  onOpenChange,
-  projectId,
-  loan,
-  onSaved,
-  forceCreate,
-}: Props) {
-  const isEdit = !!loan?.id && !forceCreate;
-
-  const [saving, setSaving] = useState(false);
+export default function CreditFormModal({ open, onOpenChange, projectId, loan, onSaved }: Props) {
+  const isEdit = useMemo(() => !!loan, [loan]);
 
   const [facilityType, setFacilityType] = useState("");
-  const [amount, setAmount] = useState<string>("");
-  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
-  const [maturity, setMaturity] = useState<string>("");
-  const [marginBps, setMarginBps] = useState<string>("");
-  const [ratePercent, setRatePercent] = useState<string>("");
-  const [status, setStatus] = useState<Loan["status"]>("draft");
-  const [comments, setComments] = useState<string>("");
+  const [currency, setCurrency] = useState("MAD");
+  const [amount, setAmount] = useState("");
+  const [tenorMonths, setTenorMonths] = useState("");
+  const [rate, setRate] = useState("");
+  const [status, setStatus] = useState<LoanStatus>("draft");
+  const [notes, setNotes] = useState("");
 
-  // pré-remplissage
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open) return;
 
     if (loan) {
       setFacilityType(loan.facility_type ?? "");
-      setAmount(
-        loan.amount != null && Number.isFinite(Number(loan.amount))
-          ? String(loan.amount)
-          : ""
-      );
-      setCurrency(loan.currency || DEFAULT_CURRENCY);
-      setMaturity(loan.maturity_months != null ? String(loan.maturity_months) : "");
-      setMarginBps(loan.margin_bps != null ? String(loan.margin_bps) : "");
-      setRatePercent(loan.rate_percent != null ? String(loan.rate_percent) : "");
-      setStatus(loan.status || "draft");
-      setComments(loan.comments || "");
+      setCurrency(loan.currency ?? "MAD");
+      setAmount(loan.amount != null ? String(loan.amount) : "");
+      setTenorMonths(loan.tenor_months != null ? String(loan.tenor_months) : "");
+      setRate(loan.rate != null ? String(loan.rate) : "");
+      setStatus(loan.status ?? "draft");
+      setNotes(loan.notes ?? "");
     } else {
       setFacilityType("");
+      setCurrency("MAD");
       setAmount("");
-      setCurrency(DEFAULT_CURRENCY);
-      setMaturity("");
-      setMarginBps("");
-      setRatePercent("");
+      setTenorMonths("");
+      setRate("");
       setStatus("draft");
-      setComments("");
+      setNotes("");
     }
+    setError(null);
   }, [open, loan]);
 
-  const amountNum = useMemo(() => {
-    const n = Number(amount);
-    return Number.isFinite(n) ? n : 0;
-  }, [amount]);
+  async function save() {
+    setSaving(true);
+    setError(null);
 
-  const canSave = useMemo(() => {
-    return facilityType.trim().length > 0 && amountNum > 0 && currency.trim().length > 0;
-  }, [facilityType, amountNum, currency]);
-
-  const close = () => {
-    if (saving) return;
-    onOpenChange(false);
-  };
-
-  const save = async () => {
-    if (!canSave) {
-      alert("Type de facilité + montant + devise sont obligatoires.");
+    if (!facilityType.trim()) {
+      setSaving(false);
+      setError("Le type de facilité est obligatoire.");
       return;
     }
 
-    setSaving(true);
-
-    const payload: Partial<Loan> = {
+    const payload: Partial<LoanRow> = {
       project_id: projectId,
       facility_type: facilityType.trim(),
-      amount: Number(amount),
-      currency: currency.trim().toUpperCase(),
-      maturity_months: maturity.trim() ? Number(maturity) : null,
-      margin_bps: marginBps.trim() ? Number(marginBps) : null,
-      rate_percent: ratePercent.trim() ? Number(ratePercent) : null,
+      currency: currency.trim() || "MAD",
+      amount: amount.trim() ? Number(amount) : undefined,
+      tenor_months: tenorMonths.trim() ? Number(tenorMonths) : undefined,
+      rate: rate.trim() ? Number(rate) : undefined,
       status,
-      comments: comments.trim() ? comments.trim() : null,
+      notes: notes.trim() || undefined,
     };
 
-    let error: any = null;
-
-    if (isEdit && loan?.id) {
-      const { error: updErr } = await supabase
-        .from(LOANS_TABLE)
-        .update(payload)
-        .eq("id", loan.id);
-      error = updErr;
-    } else {
-      // création (incluant duplication)
-      const { error: insErr } = await supabase.from(LOANS_TABLE).insert(payload);
-      error = insErr;
+    try {
+      if (loan) {
+        const { error } = await supabase.from("loans").update(payload).eq("id", loan.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("loans").insert(payload);
+        if (error) throw error;
+      }
+      await onSaved?.();
+      onOpenChange(false);
+    } catch (e: any) {
+      setError(e?.message ?? "Erreur lors de l’enregistrement.");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-
-    if (error) {
-      alert("Erreur enregistrement crédit : " + error.message);
-      return;
-    }
-
-    await onSaved();
-    onOpenChange(false);
-  };
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-sm flex items-center justify-between gap-2">
-            <span>
-              {isEdit ? "Modifier un crédit" : forceCreate ? "Dupliquer un crédit" : "Nouveau crédit"}
-            </span>
-            <Badge className="text-[10px] px-2 py-0">
-              Projet: {projectId.slice(0, 8)}…
-            </Badge>
-          </DialogTitle>
+          <DialogTitle>{isEdit ? "Modifier crédit" : "Ajouter crédit"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-12 gap-3 text-xs">
-          <div className="col-span-6">
-            <div className="mb-1 font-medium">Type de facilité</div>
-            <Input
-              value={facilityType}
-              onChange={(e) => setFacilityType(e.target.value)}
-              placeholder="Crédit inv., Spot, Avance sur marché…"
-            />
+        <div className="grid gap-3">
+          <div className="grid gap-1">
+            <Label>Facility type *</Label>
+            <Input value={facilityType} onChange={(e) => setFacilityType(e.target.value)} placeholder="Term Loan / Revolving / LC / ..." />
           </div>
 
-          <div className="col-span-3">
-            <div className="mb-1 font-medium">Statut</div>
-            <select
-              className="border rounded px-2 py-2 w-full"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as Loan["status"])}
-            >
-              <option value="draft">Brouillon</option>
-              <option value="validated">Validé</option>
-              <option value="cancelled">Annulé</option>
-            </select>
-          </div>
-
-          <div className="col-span-3">
-            <div className="mb-1 font-medium">Devise</div>
-            <Input
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              placeholder="MAD"
-            />
-          </div>
-
-          <div className="col-span-4">
-            <div className="mb-1 font-medium">Montant</div>
-            <Input
-              type="number"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0"
-            />
-            <div className="text-[11px] text-slate-500 mt-1">
-              Contrôle: montant &gt; 0
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label>Montant</Label>
+              <Input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="70000000" />
+            </div>
+            <div className="grid gap-1">
+              <Label>Devise</Label>
+              <Input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="MAD" />
             </div>
           </div>
 
-          <div className="col-span-4">
-            <div className="mb-1 font-medium">Maturité (mois)</div>
-            <Input
-              type="number"
-              min="0"
-              value={maturity}
-              onChange={(e) => setMaturity(e.target.value)}
-              placeholder="Ex: 60"
-            />
+          <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-1">
+              <Label>Tenor (mois)</Label>
+              <Input value={tenorMonths} onChange={(e) => setTenorMonths(e.target.value)} placeholder="120" />
+            </div>
+            <div className="grid gap-1">
+              <Label>Taux (%)</Label>
+              <Input value={rate} onChange={(e) => setRate(e.target.value)} placeholder="4.25" />
+            </div>
+            <div className="grid gap-1">
+              <Label>Statut</Label>
+              <select className="h-9 rounded-md border px-2" value={status} onChange={(e) => setStatus(e.target.value as LoanStatus)}>
+                <option value="draft">draft</option>
+                <option value="validated">validated</option>
+                <option value="archived">archived</option>
+              </select>
+            </div>
           </div>
 
-          <div className="col-span-4">
-            <div className="mb-1 font-medium">Marge (bps)</div>
-            <Input
-              type="number"
-              min="0"
-              value={marginBps}
-              onChange={(e) => setMarginBps(e.target.value)}
-              placeholder="Ex: 250"
-            />
+          <div className="grid gap-1">
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Commentaires…" />
           </div>
 
-          <div className="col-span-4">
-            <div className="mb-1 font-medium">Taux (%)</div>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={ratePercent}
-              onChange={(e) => setRatePercent(e.target.value)}
-              placeholder="Ex: 6.25"
-            />
-          </div>
+          {error && <div className="text-sm text-red-600">{error}</div>}
 
-          <div className="col-span-8">
-            <div className="mb-1 font-medium">Commentaires / conditions</div>
-            <Textarea
-              rows={3}
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              placeholder="Garanties, covenants, conditions spéciales…"
-            />
-          </div>
-
-          <div className="col-span-12 flex justify-end gap-2 pt-1">
-            <Button variant="outline" size="sm" onClick={close} disabled={saving}>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Annuler
             </Button>
-            <Button size="sm" onClick={save} disabled={saving || !canSave}>
-              {saving ? "Enregistrement..." : isEdit ? "Mettre à jour" : "Enregistrer"}
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </div>
-        </div>
-
-        {/* petite zone “diagnostic compact” */}
-        <div className="mt-2 text-[11px] text-slate-500">
-          <span className="font-semibold">Calcul rapide:</span>{" "}
-          Montant={amountNum.toLocaleString("fr-MA")} {currency.toUpperCase()} •
-          Maturité={toNumberOrNull(maturity) ?? "—"} mois •
-          Marge={toNumberOrNull(marginBps) ?? "—"} bps •
-          Taux={toNumberOrNull(ratePercent) ?? "—"}%
         </div>
       </DialogContent>
     </Dialog>

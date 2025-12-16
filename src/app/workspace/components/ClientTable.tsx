@@ -2,15 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import type { ClientRow, ClientStatus } from "../types";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableHeader, TableHead, TableRow, TableBody, TableCell } from "@/components/ui/table";
-import ClientFormModal from "./ClientFormModal";
-import type { ClientRow, ProjectRow, LoanRow } from "../types";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const CLIENTS_TABLE = "clients";
+import ClientFormModal from "./ClientFormModal";
 
 type Props = {
   selectedClient: ClientRow | null;
@@ -19,124 +19,80 @@ type Props = {
 
 export default function ClientTable({ selectedClient, onSelect }: Props) {
   const [rows, setRows] = useState<ClientRow[]>([]);
-  const [loading, setLoading] = useState(false);
-
+  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [onlyActive, setOnlyActive] = useState(true);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClientRow | null>(null);
-  const [forceCreate, setForceCreate] = useState(false);
 
-  const load = async () => {
+  async function fetchClients() {
     setLoading(true);
     const { data, error } = await supabase
-      .from(CLIENTS_TABLE)
-      .select("id,name,radical,segment,status,notes,created_at,updated_at")
-      .order("updated_at", { ascending: false });
+      .from("clients")
+      .select("id, created_at, name, radical, segment, status, notes")
+      .order("created_at", { ascending: false })
+      .limit(500);
 
+    if (!error) setRows((data as any) ?? []);
     setLoading(false);
-    if (error) {
-      alert("Erreur chargement clients : " + error.message);
-      return;
-    }
-    setRows((data || []) as ClientRow[]);
-  };
+  }
 
   useEffect(() => {
-    load();
+    fetchClients();
   }, []);
 
   const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return rows
-      .filter((r) => (onlyActive ? r.status !== "archived" : true))
-      .filter((r) => {
-        if (!term) return true;
-        const hay = [r.name, r.radical || "", r.segment || "", r.status || "", r.notes || ""].join(" ").toLowerCase();
-        return hay.includes(term);
-      });
-  }, [rows, q, onlyActive]);
+    const s = q.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter((c) =>
+      [c.name, c.radical, c.segment, c.status, c.notes].filter(Boolean).join(" ").toLowerCase().includes(s)
+    );
+  }, [rows, q]);
 
-  const stats = useMemo(() => {
-    const active = filtered.filter((r) => r.status !== "archived").length;
-    const archived = filtered.filter((r) => r.status === "archived").length;
-    return { total: filtered.length, active, archived };
-  }, [filtered]);
+  async function archiveClient(id: string) {
+    await supabase.from("clients").update({ status: "Archivé" satisfies ClientStatus }).eq("id", id);
+    await fetchClients();
+  }
 
-  const openNew = () => {
-    setEditing(null);
-    setForceCreate(false);
-    setOpen(true);
-  };
-
-  const openEdit = (r: ClientRow) => {
-    setEditing(r);
-    setForceCreate(false);
-    setOpen(true);
-  };
-
-  const openDuplicate = (r: ClientRow) => {
-    setEditing(r);
-    setForceCreate(true);
-    setOpen(true);
-  };
-
-  const toggleArchive = async (r: ClientRow) => {
-    if (!r.id) return;
-    const next = r.status === "archived" ? "active" : "archived";
-    const { error } = await supabase.from(CLIENTS_TABLE).update({ status: next }).eq("id", r.id);
-    if (error) return alert("Erreur MAJ statut : " + error.message);
-    await load();
-  };
-
-  const del = async (r: ClientRow) => {
-    if (!r.id) return;
-    if (!confirm("Supprimer ce client ? (Supprime aussi ses projets si FK cascade)")) return;
-    const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", r.id);
-    if (error) return alert("Erreur suppression : " + error.message);
-    await load();
-  };
+  async function unarchiveClient(id: string) {
+    await supabase.from("clients").update({ status: "Actif" satisfies ClientStatus }).eq("id", id);
+    await fetchClients();
+  }
 
   return (
     <Card>
       <CardHeader className="py-3">
-        <CardTitle className="text-sm flex items-center justify-between gap-2">
-          <span>1. Client</span>
-          <Button size="sm" onClick={openNew}>+ Ajouter</Button>
-        </CardTitle>
-      </CardHeader>
-
-      <CardContent className="space-y-3 text-xs">
-        {/* Toolbar ultra compacte */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            className="h-8 w-[280px]"
-            placeholder="Recherche (nom, radical, segment, notes)…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <Button size="sm" variant="outline" onClick={() => setOnlyActive((v) => !v)}>
-            {onlyActive ? "Actifs" : "Tous"}
-          </Button>
-          <Button size="sm" variant="outline" onClick={load} disabled={loading}>
-            {loading ? "..." : "Rafraîchir"}
-          </Button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Badge className="text-[10px] px-2 py-0">Total: {stats.total}</Badge>
-            <Badge className="text-[10px] px-2 py-0">Actifs: {stats.active}</Badge>
-            <Badge className="text-[10px] px-2 py-0">Archivés: {stats.archived}</Badge>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">Clients</CardTitle>
+          <div className="flex items-center gap-2">
+            <Input className="h-9 w-[280px]" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              + Nouveau
+            </Button>
+            <Button size="sm" variant="outline" onClick={fetchClients}>
+              Rafraîchir
+            </Button>
           </div>
         </div>
+      </CardHeader>
 
-        {/* Table */}
-        <div className="border rounded-md overflow-hidden">
+      <CardContent className="pt-0">
+        <div className="text-sm text-muted-foreground mb-2">
+          {loading ? "Chargement…" : `${filtered.length} client(s)`}
+        </div>
+
+        <div className="rounded-md border overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Client</TableHead>
                 <TableHead>Radical</TableHead>
+                <TableHead>Nom</TableHead>
                 <TableHead>Segment</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -144,72 +100,65 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
             </TableHeader>
 
             <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-[11px]">Chargement…</TableCell>
-                </TableRow>
-              )}
+              {filtered.map((c) => {
+                const isSelected = selectedClient?.id === c.id;
+                return (
+                  <TableRow
+                    key={c.id}
+                    className={isSelected ? "bg-muted/50" : ""}
+                    onClick={() => onSelect(c)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <TableCell className="font-mono text-xs">{c.radical ?? "—"}</TableCell>
+                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell>{c.segment ?? "—"}</TableCell>
+                    <TableCell>
+                      <Badge variant={c.status === "Actif" ? "default" : "secondary"}>{c.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditing(c);
+                            setOpen(true);
+                          }}
+                        >
+                          Modifier
+                        </Button>
+
+                        {c.status === "Actif" ? (
+                          <Button size="sm" variant="secondary" onClick={() => archiveClient(c.id)}>
+                            Archiver
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="secondary" onClick={() => unarchiveClient(c.id)}>
+                            Réactiver
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
 
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-[11px] text-slate-500">
-                    Aucun client. Clique sur “+ Ajouter”.
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    Aucun résultat.
                   </TableCell>
                 </TableRow>
               )}
-
-              {!loading &&
-                filtered.map((r) => {
-                  const active = selectedClient?.id === r.id;
-                  return (
-                    <TableRow key={r.id} className={active ? "bg-slate-50" : ""}>
-                      <TableCell>
-                        <div className="font-medium text-[12px]">{r.name}</div>
-                        {r.notes ? <div className="text-[11px] text-slate-500 line-clamp-1">{r.notes}</div> : null}
-                      </TableCell>
-                      <TableCell>{r.radical ?? "—"}</TableCell>
-                      <TableCell>{r.segment ?? "—"}</TableCell>
-                      <TableCell>
-                        <Badge className="text-[10px] px-2 py-0">{r.status === "archived" ? "Archivé" : "Actif"}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => onSelect(r)}>
-                            Sélection
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
-                            Ouvrir
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openDuplicate(r)}>
-                            Dupliquer
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => toggleArchive(r)}>
-                            {r.status === "archived" ? "Désarch." : "Archiver"}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => del(r)}>
-                            Suppr.
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
             </TableBody>
           </Table>
         </div>
 
         <ClientFormModal
           open={open}
-          onOpenChange={(o) => {
-            setOpen(o);
-            if (!o) {
-              setEditing(null);
-              setForceCreate(false);
-            }
-          }}
+          onOpenChange={setOpen}
           client={editing}
-          forceCreate={forceCreate}
-          onSaved={load}
+          onSaved={fetchClients}
         />
       </CardContent>
     </Card>

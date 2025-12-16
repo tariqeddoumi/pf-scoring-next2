@@ -2,144 +2,172 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import type { ProjectRow, ProjectStatus, ClientRow } from "../types";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import type { ClientRow, ProjectRow, LoanRow } from "../types";
-
-const PROJECTS_TABLE = "projects";
+import { Label } from "@/components/ui/label";
 
 type Props = {
   open: boolean;
-  onOpenChange: (o: boolean) => void;
-
+  onOpenChange: (v: boolean) => void;
   client: ClientRow;
   project: ProjectRow | null;
-  forceCreate?: boolean;
-
   onSaved: () => Promise<void> | void;
 };
 
-export default function ProjectFormModal({
-  open,
-  onOpenChange,
-  client,
-  project,
-  forceCreate,
-  onSaved,
-}: Props) {
-  const isEdit = !!project?.id && !forceCreate;
+export default function ProjectFormModal({ open, onOpenChange, client, project, onSaved }: Props) {
+  const isEdit = useMemo(() => !!project, [project]);
+
+  const [name, setName] = useState("");
+  const [projectCode, setProjectCode] = useState("");
+  const [city, setCity] = useState("");
+  const [projectType, setProjectType] = useState("");
+  const [status, setStatus] = useState<ProjectStatus>("draft");
+  const [notes, setNotes] = useState("");
+
+  const [totalCost, setTotalCost] = useState<string>("");
+  const [finAmount, setFinAmount] = useState<string>("");
 
   const [saving, setSaving] = useState(false);
-  const [name, setName] = useState("");
-  const [city, setCity] = useState("");
-  const [type, setType] = useState("");
-  const [status, setStatus] = useState<ProjectRow["status"]>("draft");
-  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
 
     if (project) {
       setName(project.name ?? "");
+      setProjectCode(project.project_code ?? "");
       setCity(project.city ?? "");
-      setType(project.type ?? "");
+      setProjectType(project.project_type ?? "");
       setStatus(project.status ?? "draft");
       setNotes(project.notes ?? "");
+      setTotalCost(project.total_cost != null ? String(project.total_cost) : "");
+      setFinAmount(project.financing_amount != null ? String(project.financing_amount) : "");
     } else {
       setName("");
+      setProjectCode("");
       setCity("");
-      setType("");
+      setProjectType("");
       setStatus("draft");
       setNotes("");
+      setTotalCost("");
+      setFinAmount("");
     }
+
+    setError(null);
   }, [open, project]);
 
-  const canSave = useMemo(() => name.trim().length > 0, [name]);
-
-  const save = async () => {
-    if (!canSave) return alert("Nom projet obligatoire.");
-
+  async function save() {
     setSaving(true);
+    setError(null);
 
-    const payload: Partial<ProjectRow> = {
-      client_id: client.id as string,
-      name: name.trim(),
-      city: city.trim() ? city.trim() : null,
-      type: type.trim() ? type.trim() : null,
-      status,
-      notes: notes.trim() ? notes.trim() : null,
-    };
-
-    let error: any = null;
-
-    if (isEdit && project?.id) {
-      const { error: e } = await supabase.from(PROJECTS_TABLE).update(payload).eq("id", project.id);
-      error = e;
-    } else {
-      const { error: e } = await supabase.from(PROJECTS_TABLE).insert(payload);
-      error = e;
+    if (!name.trim()) {
+      setSaving(false);
+      setError("Le nom du projet est obligatoire.");
+      return;
     }
 
-    setSaving(false);
+    const payload: Partial<ProjectRow> = {
+      client_id: client.id,
+      name: name.trim(),
+      project_code: projectCode.trim() || undefined,
+      city: city.trim() || undefined,
+      project_type: projectType.trim() || undefined,
+      status,
+      notes: notes.trim() || undefined,
+      total_cost: totalCost.trim() ? Number(totalCost) : undefined,
+      financing_amount: finAmount.trim() ? Number(finAmount) : undefined,
+    };
 
-    if (error) return alert("Erreur enregistrement projet : " + error.message);
-
-    await onSaved();
-    onOpenChange(false);
-  };
+    try {
+      if (project) {
+        const { error } = await supabase.from("projects").update(payload).eq("id", project.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("projects").insert(payload);
+        if (error) throw error;
+      }
+      await onSaved?.();
+      onOpenChange(false);
+    } catch (e: any) {
+      setError(e?.message ?? "Erreur lors de l’enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-sm flex items-center justify-between gap-2">
-            <span>{isEdit ? "Modifier projet" : forceCreate ? "Dupliquer projet" : "Nouveau projet"}</span>
-            <Badge className="text-[10px] px-2 py-0">Client: {(client.name || "").slice(0, 18)}</Badge>
-          </DialogTitle>
+          <DialogTitle>{isEdit ? "Modifier projet" : "Ajouter projet"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-12 gap-3 text-xs">
-          <div className="col-span-6">
-            <div className="mb-1 font-medium">Nom du projet</div>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Centrale solaire X" />
+        <div className="grid gap-3">
+          <div className="grid gap-1">
+            <Label>Client</Label>
+            <Input value={`${client.radical ?? "—"} · ${client.name}`} disabled />
           </div>
 
-          <div className="col-span-3">
-            <div className="mb-1 font-medium">Statut</div>
-            <select
-              className="border rounded px-2 py-2 w-full"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as ProjectRow["status"])}
-            >
-              <option value="active">Actif</option>
-              <option value="archived">Archivé</option>
-            </select>
+          <div className="grid gap-1">
+            <Label>Nom projet *</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom du projet" />
           </div>
 
-          <div className="col-span-3">
-            <div className="mb-1 font-medium">Ville</div>
-            <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Casablanca…" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label>Code projet</Label>
+              <Input value={projectCode} onChange={(e) => setProjectCode(e.target.value)} placeholder="PRJ-001" />
+            </div>
+            <div className="grid gap-1">
+              <Label>Ville</Label>
+              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Casablanca" />
+            </div>
           </div>
 
-          <div className="col-span-6">
-            <div className="mb-1 font-medium">Type</div>
-            <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="PPP, Énergie, Immobilier…" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label>Type projet</Label>
+              <Input value={projectType} onChange={(e) => setProjectType(e.target.value)} placeholder="Energy / Infra / ..." />
+            </div>
+
+            <div className="grid gap-1">
+              <Label>Statut</Label>
+              <select className="h-9 rounded-md border px-2" value={status} onChange={(e) => setStatus(e.target.value as ProjectStatus)}>
+                <option value="draft">Draft</option>
+                <option value="validated">Validated</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
           </div>
 
-          <div className="col-span-12">
-            <div className="mb-1 font-medium">Notes</div>
-            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Résumé projet, risques, sponsors…" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label>Coût total (MAD)</Label>
+              <Input value={totalCost} onChange={(e) => setTotalCost(e.target.value)} placeholder="100000000" />
+            </div>
+            <div className="grid gap-1">
+              <Label>Financement (MAD)</Label>
+              <Input value={finAmount} onChange={(e) => setFinAmount(e.target.value)} placeholder="70000000" />
+            </div>
           </div>
 
-          <div className="col-span-12 flex justify-end gap-2 pt-1">
-            <Button size="sm" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <div className="grid gap-1">
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Commentaires…" />
+          </div>
+
+          {error && <div className="text-sm text-red-600">{error}</div>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Annuler
             </Button>
-            <Button size="sm" onClick={save} disabled={saving || !canSave}>
-              {saving ? "Enregistrement..." : isEdit ? "Mettre à jour" : "Enregistrer"}
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </div>
         </div>

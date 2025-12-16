@@ -1,250 +1,210 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import type { ProjectRow, EvaluationRow } from "../types";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableRow,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
-
-import type { ClientRow, ProjectRow, LoanRow } from "../types";
-
-export type Evaluation = {
-  id: string;
-  project_id: string;
-  created_at: string;
-  updated_at: string;
-  created_by: string | null;
-  status: "draft" | "validated";
-  label: string | null;
-  total_score: number | null;
-  grade: string | null;
-  pd: number | null;
-  answers: any;
-  breakdown: any;
-};
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type Props = {
   project: ProjectRow;
 };
 
 export default function ScoringPanel({ project }: Props) {
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<EvaluationRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [openDrawer, setOpenDrawer] = useState(false);
-  const [editingEval, setEditingEval] = useState<Evaluation | null>(null);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<EvaluationRow | null>(null);
 
-  const loadEvaluations = async () => {
+  const [status, setStatus] = useState<EvaluationRow["status"]>("draft");
+  const [totalScore, setTotalScore] = useState("");
+  const [payload, setPayload] = useState("{}");
+  const [error, setError] = useState<string | null>(null);
+
+  async function fetchEvals() {
     setLoading(true);
     const { data, error } = await supabase
-      .from("project_evaluations_v5")
-      .select("*")
+      .from("evaluations")
+      .select("id, created_at, project_id, status, total_score, payload")
       .eq("project_id", project.id)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(200);
 
+    if (!error) setRows((data as any) ?? []);
     setLoading(false);
-    if (error) {
-      console.error(error);
-      return;
-    }
-    setEvaluations((data || []) as Evaluation[]);
-  };
+  }
 
   useEffect(() => {
-    loadEvaluations();
+    fetchEvals();
   }, [project.id]);
 
-  const lastEval = evaluations[0] || null;
+  const title = useMemo(() => `Évaluations — ${project.name}`, [project.name]);
 
-  const handleNewEvaluation = () => {
-    setEditingEval(null);
-    setOpenDrawer(true);
-  };
+  function openCreate() {
+    setEditing(null);
+    setStatus("draft");
+    setTotalScore("");
+    setPayload("{}");
+    setError(null);
+    setOpen(true);
+  }
 
-  const handleEdit = (ev: Evaluation) => {
-    setEditingEval(ev);
-    setOpenDrawer(true);
-  };
+  function openEdit(e: EvaluationRow) {
+    setEditing(e);
+    setStatus(e.status ?? "draft");
+    setTotalScore(e.total_score != null ? String(e.total_score) : "");
+    setPayload(e.payload ? JSON.stringify(e.payload, null, 2) : "{}");
+    setError(null);
+    setOpen(true);
+  }
 
-  const handleDuplicate = (ev: Evaluation) => {
-    // on ouvre le drawer avec les mêmes réponses mais sans id
-    setEditingEval({
-      ...ev,
-      id: "",
-      status: "draft",
-      label: (ev.label || "Copie") + " (copie)",
-    });
-    setOpenDrawer(true);
-  };
+  async function save() {
+    setError(null);
 
-  const handleDelete = async (ev: Evaluation) => {
-    if (!confirm("Supprimer cette évaluation ?")) return;
-    const { error } = await supabase
-      .from("project_evaluations_v5")
-      .delete()
-      .eq("id", ev.id);
-    if (error) {
-      alert("Erreur suppression : " + error.message);
+    let json: any = {};
+    try {
+      json = payload.trim() ? JSON.parse(payload) : {};
+    } catch {
+      setError("Payload JSON invalide.");
       return;
     }
-    loadEvaluations();
-  };
 
-  const handleValidate = async (ev: Evaluation) => {
-    const { error } = await supabase
-      .from("project_evaluations_v5")
-      .update({ status: "validated" })
-      .eq("id", ev.id);
-    if (error) {
-      alert("Erreur validation : " + error.message);
-      return;
+    const toSave: Partial<EvaluationRow> = {
+      project_id: project.id,
+      status: status ?? "draft",
+      total_score: totalScore.trim() ? Number(totalScore) : undefined,
+      payload: json,
+    };
+
+    if (editing) {
+      const { error } = await supabase.from("evaluations").update(toSave).eq("id", editing.id);
+      if (error) return setError(error.message);
+    } else {
+      const { error } = await supabase.from("evaluations").insert(toSave);
+      if (error) return setError(error.message);
     }
-    loadEvaluations();
-  };
 
-  const handleSaved = async () => {
-    await loadEvaluations();
-    setOpenDrawer(false);
-    setEditingEval(null);
-  };
+    setOpen(false);
+    await fetchEvals();
+  }
+
+  async function remove(id: string) {
+    await supabase.from("evaluations").delete().eq("id", id);
+    await fetchEvals();
+  }
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-sm flex justify-between items-center">
-          <span>3. Scoring Project Finance V5</span>
-          <Button size="sm" onClick={handleNewEvaluation}>
-            + Nouvelle évaluation
-          </Button>
-        </CardTitle>
+      <CardHeader className="py-3">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={openCreate}>
+              + Nouvelle évaluation
+            </Button>
+            <Button size="sm" variant="outline" onClick={fetchEvals}>
+              Rafraîchir
+            </Button>
+          </div>
+        </div>
       </CardHeader>
 
-      <CardContent className="space-y-4 text-xs">
-        {/* Résumé synthétique */}
-        {lastEval ? (
-          <div className="p-3 rounded-md bg-slate-50 border flex justify-between items-center">
-            <div>
-              <div className="text-[11px] text-slate-500">
-                Dernière évaluation ({lastEval.status === "validated"
-                  ? "validée"
-                  : "brouillon"}
-                ) :
-              </div>
-              <div className="font-semibold">
-                Score : {lastEval.total_score?.toFixed(3) ?? "N/A"} • Grade :{" "}
-                {lastEval.grade ?? "N/A"} • PD :{" "}
-                {lastEval.pd != null ? lastEval.pd.toFixed(4) : "N/A"}
-              </div>
-              {lastEval.label && (
-                <div className="text-[11px] text-slate-500">
-                  Libellé : {lastEval.label}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="text-[11px] text-slate-500">
-            Aucune évaluation pour ce projet. Cliquez sur “Nouvelle évaluation”.
-          </div>
-        )}
+      <CardContent className="pt-0">
+        <div className="text-sm text-muted-foreground mb-2">
+          {loading ? "Chargement…" : `${rows.length} évaluation(s)`}
+        </div>
 
-        {/* Tableau des évaluations */}
-        <div className="border rounded-md overflow-hidden">
+        <div className="rounded-md border overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Libellé</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Grade</TableHead>
-                <TableHead>PD</TableHead>
                 <TableHead>Statut</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-[11px]">
-                    Chargement…
+              {rows.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell className="text-sm">{e.created_at ? new Date(e.created_at).toLocaleString() : "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={e.status === "validated" ? "default" : e.status === "draft" ? "secondary" : "outline"}>
+                      {e.status ?? "—"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-medium">{e.total_score ?? "—"}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => openEdit(e)}>
+                        Modifier
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => remove(e.id)}>
+                        Supprimer
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
-              )}
-              {!loading && evaluations.length === 0 && (
+              ))}
+
+              {!loading && rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-[11px]">
+                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
                     Aucune évaluation.
                   </TableCell>
                 </TableRow>
               )}
-              {!loading &&
-                evaluations.map((ev) => (
-                  <TableRow key={ev.id}>
-                    <TableCell>
-                      {new Date(ev.created_at).toLocaleString("fr-MA")}
-                    </TableCell>
-                    <TableCell>{ev.label || "-"}</TableCell>
-                    <TableCell>
-                      {ev.total_score != null
-                        ? ev.total_score.toFixed(3)
-                        : "N/A"}
-                    </TableCell>
-                    <TableCell>{ev.grade ?? "N/A"}</TableCell>
-                    <TableCell>
-                      {ev.pd != null ? ev.pd.toFixed(4) : "N/A"}
-                    </TableCell>
-                    <TableCell>
-                      {ev.status === "validated" ? "Validée" : "Brouillon"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(ev)}
-                        >
-                          Ouvrir
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDuplicate(ev)}
-                        >
-                          Dupliquer
-                        </Button>
-                        {ev.status !== "validated" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleValidate(ev)}
-                          >
-                            Valider
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(ev)}
-                        >
-                          Supprimer
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
             </TableBody>
           </Table>
         </div>
 
-        {/* Drawer / panneau pour créer / modifier une évaluation */}
-        
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>{editing ? "Modifier évaluation" : "Nouvelle évaluation"}</DialogTitle>
+            </DialogHeader>
+
+            <div className="grid gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-1">
+                  <Label>Statut</Label>
+                  <select className="h-9 rounded-md border px-2" value={status ?? "draft"} onChange={(ev) => setStatus(ev.target.value as any)}>
+                    <option value="draft">draft</option>
+                    <option value="validated">validated</option>
+                    <option value="archived">archived</option>
+                  </select>
+                </div>
+                <div className="grid gap-1 col-span-2">
+                  <Label>Score total</Label>
+                  <Input value={totalScore} onChange={(e) => setTotalScore(e.target.value)} placeholder="0.00" />
+                </div>
+              </div>
+
+              <div className="grid gap-1">
+                <Label>Payload (JSON)</Label>
+                <Textarea className="font-mono text-xs min-h-[260px]" value={payload} onChange={(e) => setPayload(e.target.value)} />
+              </div>
+
+              {error && <div className="text-sm text-red-600">{error}</div>}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setOpen(false)}>
+                  Annuler
+                </Button>
+                <Button onClick={save}>Enregistrer</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

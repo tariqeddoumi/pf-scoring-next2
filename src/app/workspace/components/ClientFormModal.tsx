@@ -1,24 +1,22 @@
+// src/app/workspace/components/ClientFormModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 
-const CLIENTS_TABLE = "clients";
-
-import type { ClientRow, ProjectRow, LoanRow } from "../types";
+import { supabase } from "@/lib/supabaseClient";
+import type { ClientRow, ClientStatus } from "../types";
 
 type Props = {
   open: boolean;
-  onOpenChange: (o: boolean) => void;
+  onOpenChange: (v: boolean) => void;
 
-  client: ClientRow | null;          // null = création
-  forceCreate?: boolean;             // duplication -> création forcée
-
+  client: ClientRow | null;        // null => création
+  forceCreate?: boolean;           // si tu veux forcer le mode création
   onSaved: () => Promise<void> | void;
 };
 
@@ -29,121 +27,121 @@ export default function ClientFormModal({
   forceCreate,
   onSaved,
 }: Props) {
-  const isEdit = !!client?.id && !forceCreate;
+  const isEdit = useMemo(() => !!client && !forceCreate, [client, forceCreate]);
 
-  const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [radical, setRadical] = useState("");
   const [segment, setSegment] = useState("");
-  const [status, setStatus] = useState<ClientRow["status"]>("active");
+  const [status, setStatus] = useState<ClientStatus>("Actif"); // ✅ aligné
   const [notes, setNotes] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
 
-    if (client) {
+    if (client && isEdit) {
       setName(client.name ?? "");
       setRadical(client.radical ?? "");
       setSegment(client.segment ?? "");
-      setStatus(client.status ?? "active");
+      setStatus(client.status ?? "Actif");
       setNotes(client.notes ?? "");
     } else {
       setName("");
       setRadical("");
       setSegment("");
-      setStatus("active");
+      setStatus("Actif");
       setNotes("");
     }
-  }, [open, client]);
+    setError(null);
+  }, [open, client, isEdit]);
 
-  const canSave = useMemo(() => name.trim().length > 0, [name]);
-
-  const save = async () => {
-    if (!canSave) {
-      alert("Nom client obligatoire.");
-      return;
-    }
-
+  async function save() {
     setSaving(true);
+    setError(null);
 
     const payload: Partial<ClientRow> = {
       name: name.trim(),
-      radical: radical.trim() ? radical.trim() : null,
-      segment: segment.trim() ? segment.trim() : null,
+      radical: radical.trim() || undefined,
+      segment: segment.trim() || undefined,
       status,
-      notes: notes.trim() ? notes.trim() : null,
+      notes: notes.trim() || undefined,
     };
 
-    let error: any = null;
-
-    if (isEdit && client?.id) {
-      const { error: e } = await supabase.from(CLIENTS_TABLE).update(payload).eq("id", client.id);
-      error = e;
-    } else {
-      const { error: e } = await supabase.from(CLIENTS_TABLE).insert(payload);
-      error = e;
-    }
-
-    setSaving(false);
-
-    if (error) {
-      alert("Erreur enregistrement client : " + error.message);
+    if (!payload.name) {
+      setSaving(false);
+      setError("Le nom client est obligatoire.");
       return;
     }
 
-    await onSaved();
-    onOpenChange(false);
-  };
+    try {
+      if (isEdit && client) {
+        const { error } = await supabase.from("clients").update(payload).eq("id", client.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("clients").insert(payload);
+        if (error) throw error;
+      }
+
+      await onSaved?.();
+      onOpenChange(false);
+    } catch (e: any) {
+      setError(e?.message ?? "Erreur lors de l’enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-sm flex items-center justify-between gap-2">
-            <span>{isEdit ? "Modifier client" : forceCreate ? "Dupliquer client" : "Nouveau client"}</span>
-            <Badge className="text-[10px] px-2 py-0">{isEdit ? "EDIT" : "CREATE"}</Badge>
-          </DialogTitle>
+          <DialogTitle>{isEdit ? "Modifier client" : "Ajouter un client"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-12 gap-3 text-xs">
-          <div className="col-span-6">
-            <div className="mb-1 font-medium">Nom</div>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Raison sociale" />
+        <div className="grid gap-3">
+          <div className="grid gap-1">
+            <Label>Nom *</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Société ABC" />
           </div>
 
-          <div className="col-span-3">
-            <div className="mb-1 font-medium">Statut</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label>Radical</Label>
+              <Input value={radical} onChange={(e) => setRadical(e.target.value)} placeholder="1234567" />
+            </div>
+            <div className="grid gap-1">
+              <Label>Segment</Label>
+              <Input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="PME / GE / ..." />
+            </div>
+          </div>
+
+          <div className="grid gap-1">
+            <Label>Statut</Label>
             <select
-              className="border rounded px-2 py-2 w-full"
+              className="h-9 rounded-md border px-2"
               value={status}
-              onChange={(e) => setStatus(e.target.value as ClientRow["status"])}
+              onChange={(e) => setStatus(e.target.value as ClientStatus)}
             >
-              <option value="active">Actif</option>
-              <option value="archived">Archivé</option>
+              <option value="Actif">Actif</option>
+              <option value="Archivé">Archivé</option>
             </select>
           </div>
 
-          <div className="col-span-3">
-            <div className="mb-1 font-medium">Segment</div>
-            <Input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="PME / GE / ..." />
+          <div className="grid gap-1">
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Commentaires…" />
           </div>
 
-          <div className="col-span-6">
-            <div className="mb-1 font-medium">Radical</div>
-            <Input value={radical} onChange={(e) => setRadical(e.target.value)} placeholder="Ex: CLT1234" />
-          </div>
+          {error && <div className="text-sm text-red-600">{error}</div>}
 
-          <div className="col-span-12">
-            <div className="mb-1 font-medium">Notes</div>
-            <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Infos relation, remarques RM..." />
-          </div>
-
-          <div className="col-span-12 flex justify-end gap-2 pt-1">
-            <Button size="sm" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Annuler
             </Button>
-            <Button size="sm" onClick={save} disabled={saving || !canSave}>
-              {saving ? "Enregistrement..." : isEdit ? "Mettre à jour" : "Enregistrer"}
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </div>
         </div>

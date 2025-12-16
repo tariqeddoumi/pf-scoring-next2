@@ -1,49 +1,67 @@
+// src/app/workspace/types.ts
+
 export type ClientStatus = "Actif" | "Archivé";
-export type ProjectStatus = "draft" | "validated" | "archived";
+export type ProjectStatus = "draft" | "validated" | "archived"; // garde ça simple pour l'instant
+export type LoanStatus = "draft" | "validated" | "archived";
 
 export type ClientRow = {
   id: string;
-  name: string;
-  radical?: string | null;
-  segment?: string | null;
-  status: ClientStatus;
-  notes?: string | null;
   created_at?: string;
+
+  name: string;
+  radical?: string;   // en DB: nullable -> on garde optional
+  segment?: string;
+  status: ClientStatus;
+
+  notes?: string;
 };
 
 export type ProjectRow = {
   id: string;
+  created_at?: string;
+
   client_id: string;
+
   name: string;
-  project_code?: string | null;
+  project_code?: string;
 
-  city?: string | null;
+  city?: string;
 
-  // Selon ta DB tu peux avoir l’un ou l’autre (ou renommer)
-  type?: string | null;
-  project_type?: string | null;
+  // IMPORTANT: on standardise sur project_type (pas "type")
+  project_type?: string;
 
   status: ProjectStatus;
+  notes?: string;
 
-  notes?: string | null;
-
-  total_cost?: number | null;
-  financing_amount?: number | null;
-
-  created_at?: string;
+  // si tu as ces champs en base ils s’afficheront, sinon ignore
+  total_cost?: number;
+  financing_amount?: number;
 };
-
-export type LoanStatus = "draft" | "validated" | "archived";
 
 export type LoanRow = {
   id: string;
-  project_id: string;
-  facility_type?: string | null;
-  amount?: number | null;
-  currency?: string | null;
-  tenor_months?: number | null;
-  rate?: number | null;
-  status?: LoanStatus | null;
-  notes?: string | null;
   created_at?: string;
+
+  project_id: string;
+
+  facility_type?: string;
+  currency?: string;
+  amount?: number;
+  tenor_months?: number;
+  rate?: number;
+  status?: LoanStatus;
+  notes?: string;
+};
+
+export type EvaluationRow = {
+  id: string;
+  created_at?: string;
+
+  project_id: string;
+
+  status?: "draft" | "validated" | "archived";
+  total_score?: number;
+
+  // structure libre (JSON) pour dimensions / réponses
+  payload?: any;
 };
