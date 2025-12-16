@@ -36,7 +36,7 @@ export default function SummaryPanel({ client, project }: Props) {
 
         <div className="space-y-1">
           <div><strong>Projet :</strong> {project.name}</div>
-          <div><strong>Type :</strong> {project.project_type ?? "—"}</div>
+          <div><strong>Type :</strong> {project.type ?? "—"}</div>
         </div>
 
         {/* Décision */}
