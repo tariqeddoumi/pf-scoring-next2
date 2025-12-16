@@ -22,6 +22,7 @@ export type ProjectRow = {
   type: string | null;      // ✅ AJOUT
   status: ProjectStatus;
   notes: string | null;     // ✅ AJOUT
+  project_code?: string | null;
   total_cost?: number | null;
   financing_amount?: number | null;
   created_at?: string;
