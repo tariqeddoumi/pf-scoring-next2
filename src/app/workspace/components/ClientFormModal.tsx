@@ -95,7 +95,7 @@ export default function ClientFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Modifier client" : "Ajouter un client"}</DialogTitle>
         </DialogHeader>
@@ -136,16 +136,17 @@ export default function ClientFormModal({
 
           {error && <div className="text-sm text-red-600">{error}</div>}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-              Annuler
-            </Button>
-            <Button onClick={save} disabled={saving}>
-              {saving ? "Enregistrement…" : "Enregistrer"}
-            </Button>
-          </div>
         </div>
+      <DialogFooter>
+      <Button variant="outline" onClick={() => onOpenChange(false)}>
+        Annuler
+      </Button>
+      <Button onClick={handleSave}>
+        Enregistrer
+      </Button>
+      </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+  
