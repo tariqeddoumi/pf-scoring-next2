@@ -1,51 +1,73 @@
-// src/app/workspace/components/ClientFormModal.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-
+import * as React from "react";
 import { supabase } from "@/lib/supabaseClient";
-import type { ClientRow, ClientStatus } from "../types";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import type { ClientRow } from "../types";
+
+type ClientStatus = "Actif" | "Archivé";
 
 type Props = {
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (open: boolean) => void;
 
-  client: ClientRow | null;        // null => création
-  forceCreate?: boolean;           // si tu veux forcer le mode création
-  onSaved: () => Promise<void> | void;
+  /** si null => création */
+  client: ClientRow | null;
+
+  /** callback après save pour recharger la liste */
+  onSaved?: () => void;
 };
+
+const CLIENTS_TABLE = "clients";
 
 export default function ClientFormModal({
   open,
   onOpenChange,
   client,
-  forceCreate,
   onSaved,
 }: Props) {
-  const isEdit = useMemo(() => !!client && !forceCreate, [client, forceCreate]);
+  const isEdit = !!client?.id;
 
-  const [name, setName] = useState("");
-  const [radical, setRadical] = useState("");
-  const [segment, setSegment] = useState("");
-  const [status, setStatus] = useState<ClientStatus>("Actif"); // ✅ aligné
-  const [notes, setNotes] = useState("");
+  const [name, setName] = React.useState("");
+  const [radical, setRadical] = React.useState("");
+  const [segment, setSegment] = React.useState("");
+  const [status, setStatus] = React.useState<ClientStatus>("Actif");
+  const [notes, setNotes] = React.useState("");
 
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!open) return;
 
-    if (client && isEdit) {
+    setError(null);
+
+    if (client) {
       setName(client.name ?? "");
       setRadical(client.radical ?? "");
       setSegment(client.segment ?? "");
-      setStatus(client.status ?? "Actif");
+      setStatus((client.status as ClientStatus) ?? "Actif");
       setNotes(client.notes ?? "");
     } else {
       setName("");
@@ -54,40 +76,43 @@ export default function ClientFormModal({
       setStatus("Actif");
       setNotes("");
     }
+  }, [open, client]);
+
+  const canSave = name.trim().length >= 2;
+
+  async function handleSave() {
     setError(null);
-  }, [open, client, isEdit]);
 
-  async function save() {
-    setSaving(true);
-    setError(null);
-
-    const payload: Partial<ClientRow> = {
-      name: name.trim(),
-      radical: radical.trim() || undefined,
-      segment: segment.trim() || undefined,
-      status,
-      notes: notes.trim() || undefined,
-    };
-
-    if (!payload.name) {
-      setSaving(false);
-      setError("Le nom client est obligatoire.");
+    if (!canSave) {
+      setError("Le nom est obligatoire (min 2 caractères).");
       return;
     }
 
+    setSaving(true);
     try {
-      if (isEdit && client) {
-        const { error } = await supabase.from("clients").update(payload).eq("id", client.id);
-        if (error) throw error;
+      const payload: Partial<ClientRow> = {
+        name: name.trim(),
+        radical: radical.trim() || "",
+        segment: segment.trim() || "",
+        status,
+        notes: notes.trim() || "",
+      };
+
+      if (isEdit && client?.id) {
+        const { error: e } = await supabase
+          .from(CLIENTS_TABLE)
+          .update(payload)
+          .eq("id", client.id);
+        if (e) throw e;
       } else {
-        const { error } = await supabase.from("clients").insert(payload);
-        if (error) throw error;
+        const { error: e } = await supabase.from(CLIENTS_TABLE).insert(payload);
+        if (e) throw e;
       }
 
-      await onSaved?.();
+      onSaved?.();
       onOpenChange(false);
     } catch (e: any) {
-      setError(e?.message ?? "Erreur lors de l’enregistrement.");
+      setError(e?.message ?? "Erreur inconnue.");
     } finally {
       setSaving(false);
     }
@@ -95,58 +120,113 @@ export default function ClientFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Modifier client" : "Ajouter un client"}</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid gap-3">
-          <div className="grid gap-1">
-            <Label>Nom *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Société ABC" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1">
-              <Label>Radical</Label>
-              <Input value={radical} onChange={(e) => setRadical(e.target.value)} placeholder="1234567" />
-            </div>
-            <div className="grid gap-1">
-              <Label>Segment</Label>
-              <Input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="PME / GE / ..." />
-            </div>
-          </div>
-
-          <div className="grid gap-1">
-            <Label>Statut</Label>
-            <select
-              className="h-9 rounded-md border px-2"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as ClientStatus)}
-            >
-              <option value="Actif">Actif</option>
-              <option value="Archivé">Archivé</option>
-            </select>
-          </div>
-
-          <div className="grid gap-1">
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Commentaires…" />
-          </div>
-
-          {error && <div className="text-sm text-red-600">{error}</div>}
-
+      <DialogContent className="max-w-2xl p-0 overflow-hidden">
+        {/* Header */}
+        <div className="border-b bg-muted/30 px-6 py-4">
+          <DialogHeader>
+            <DialogTitle className="text-xl">
+              {isEdit ? "Modifier le client" : "Ajouter un client"}
+            </DialogTitle>
+            <DialogDescription>
+              Renseigne les informations puis enregistre.
+            </DialogDescription>
+          </DialogHeader>
         </div>
-      <DialogFooter>
-      <Button variant="outline" onClick={() => onOpenChange(false)}>
-        Annuler
-      </Button>
-      <Button onClick={handleSave}>
-        Enregistrer
-      </Button>
-      </DialogFooter>
+
+        {/* Body scrollable */}
+        <div className="px-6 py-5 max-h-[70vh] overflow-auto">
+          {error && (
+            <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+              <span className="font-medium">Erreur :</span> {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Nom */}
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="name">
+                Nom <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex: Société XYZ"
+              />
+              <div className="text-xs text-muted-foreground">
+                Minimum 2 caractères.
+              </div>
+            </div>
+
+            {/* Radical */}
+            <div className="space-y-2">
+              <Label htmlFor="radical">Radical</Label>
+              <Input
+                id="radical"
+                value={radical}
+                onChange={(e) => setRadical(e.target.value)}
+                placeholder="Ex: 1234567"
+              />
+            </div>
+
+            {/* Segment */}
+            <div className="space-y-2">
+              <Label htmlFor="segment">Segment</Label>
+              <Input
+                id="segment"
+                value={segment}
+                onChange={(e) => setSegment(e.target.value)}
+                placeholder="Ex: PME / GE / ..."
+              />
+            </div>
+
+            {/* Statut */}
+            <div className="space-y-2">
+              <Label>Statut</Label>
+              <Select
+                value={status}
+                onValueChange={(v) => setStatus(v as ClientStatus)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir un statut" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Actif">Actif</SelectItem>
+                  <SelectItem value="Archivé">Archivé</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Commentaires / informations complémentaires..."
+                className="min-h-[110px]"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t bg-muted/20 px-6 py-4">
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
+              Annuler
+            </Button>
+            <Button onClick={handleSave} disabled={saving || !canSave}>
+              {saving ? "Enregistrement..." : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
-  
