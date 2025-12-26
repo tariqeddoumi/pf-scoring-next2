@@ -9,7 +9,7 @@ type Props = {
   project: ProjectRow;
 };
 
-function fmtMoney(v?: number) {
+function fmtMoney(v?: number | null) {
   if (v == null) return "—";
   try {
     return new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD" }).format(v);
@@ -45,8 +45,12 @@ export default function SummaryPanel({ client, project }: Props) {
 
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground">Chiffres</div>
-            <div className="text-sm">Coût total: <span className="font-medium">{fmtMoney(project.total_cost)}</span></div>
-            <div className="text-sm">Financement: <span className="font-medium">{fmtMoney(project.financing_amount)}</span></div>
+            <div className="text-sm">
+              Coût total: <span className="font-medium">{fmtMoney(project.total_cost)}</span>
+            </div>
+            <div className="text-sm">
+              Financement: <span className="font-medium">{fmtMoney(project.financing_amount)}</span>
+            </div>
           </div>
         </div>
       </CardContent>
