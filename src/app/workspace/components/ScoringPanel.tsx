@@ -1,20 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import type { ProjectRow, EvaluationRow, EvaluationStatus } from "../types";
 
-import {
-  Card, CardContent, CardHeader, CardTitle
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
-} from "@/components/ui/table";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle
-} from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,42 +17,50 @@ type Props = {
   project: ProjectRow;
 };
 
+function errMsg(e: unknown) {
+  return e instanceof Error ? e.message : "Erreur inattendue.";
+}
+
 export default function ScoringPanel({ project }: Props) {
   const [rows, setRows] = useState<EvaluationRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<EvaluationRow | null>(null);
 
   const [status, setStatus] = useState<EvaluationStatus>("draft");
-  const [totalScore, setTotalScore] = useState<string>("");
-  const [payload, setPayload] = useState<string>("{}");
+  const [totalScore, setTotalScore] = useState("");
+  const [payload, setPayload] = useState("{}");
   const [error, setError] = useState<string | null>(null);
 
   const fetchEvals = useCallback(async () => {
     setLoading(true);
+    setError(null);
 
-    const { data, error } = await supabase
-      .from("evaluations")
-      .select("id, created_at, project_id, status, total_score, payload")
-      .eq("project_id", project.id)
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("evaluations")
+        .select("id, created_at, updated_at, project_id, status, total_score, payload")
+        .eq("project_id", project.id)
+        .order("created_at", { ascending: false })
+        .limit(200);
 
-    if (!error && data) {
-      setRows(data);
+      if (error) throw error;
+      setRows((data ?? []) as EvaluationRow[]);
+    } catch (e: unknown) {
+      setError(errMsg(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [project.id]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEvals();
   }, [fetchEvals]);
 
-  const title = useMemo(
-    () => `Évaluations — ${project.name}`,
-    [project.name]
-  );
+  const title = useMemo(() => `Évaluations — ${project.name}`, [project.name]);
 
   function openCreate() {
     setEditing(null);
@@ -73,7 +75,7 @@ export default function ScoringPanel({ project }: Props) {
     setEditing(e);
     setStatus(e.status ?? "draft");
     setTotalScore(e.total_score != null ? String(e.total_score) : "");
-    setPayload(JSON.stringify(e.payload ?? {}, null, 2));
+    setPayload(e.payload ? JSON.stringify(e.payload, null, 2) : "{}");
     setError(null);
     setOpen(true);
   }
@@ -81,115 +83,140 @@ export default function ScoringPanel({ project }: Props) {
   async function save() {
     setError(null);
 
-    let json: unknown;
+    let json: unknown = {};
     try {
-      json = JSON.parse(payload || "{}");
+      json = payload.trim() ? (JSON.parse(payload) as unknown) : {};
     } catch {
-      setError("Payload JSON invalide");
+      setError("Payload JSON invalide.");
       return;
     }
 
     const toSave: Partial<EvaluationRow> = {
       project_id: project.id,
-      status,
-      total_score: totalScore ? Number(totalScore) : undefined,
+      status: status ?? "draft",
+      total_score: totalScore.trim() ? Number(totalScore) : undefined,
       payload: json,
+      updated_at: new Date().toISOString(),
     };
 
-    const query = editing
-      ? supabase.from("evaluations").update(toSave).eq("id", editing.id)
-      : supabase.from("evaluations").insert(toSave);
+    try {
+      if (editing) {
+        const { error } = await supabase.from("evaluations").update(toSave).eq("id", editing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("evaluations").insert({
+          ...toSave,
+          created_at: new Date().toISOString(),
+        });
+        if (error) throw error;
+      }
 
-    const { error } = await query;
-    if (error) {
-      setError(error.message);
-      return;
+      setOpen(false);
+      await fetchEvals();
+    } catch (e: unknown) {
+      setError(errMsg(e));
     }
-
-    setOpen(false);
-    fetchEvals();
   }
 
   async function remove(id: string) {
     await supabase.from("evaluations").delete().eq("id", id);
-    fetchEvals();
+    await fetchEvals();
   }
 
   return (
     <Card>
       <CardHeader className="py-3">
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base">{title}</CardTitle>
-          <Button size="sm" onClick={openCreate}>+ Nouvelle</Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={openCreate}>+ Nouvelle évaluation</Button>
+            <Button size="sm" variant="outline" onClick={fetchEvals}>Rafraîchir</Button>
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent>
-        {loading && <div className="text-sm">Chargement…</div>}
+      <CardContent className="pt-0">
+        <div className="text-sm text-muted-foreground mb-2">
+          {loading ? "Chargement…" : `${rows.length} évaluation(s)`}
+        </div>
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((e) => (
-              <TableRow key={e.id}>
-                <TableCell>{new Date(e.created_at!).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  <Badge>{e.status}</Badge>
-                </TableCell>
-                <TableCell>{e.total_score ?? "—"}</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button size="sm" variant="outline" onClick={() => openEdit(e)}>
-                    Modifier
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => remove(e.id)}>
-                    Supprimer
-                  </Button>
-                </TableCell>
+        {error && <div className="text-sm text-red-600 mb-2">{error}</div>}
+
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Statut</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+
+            <TableBody>
+              {rows.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell className="text-sm">{e.created_at ? new Date(e.created_at).toLocaleString() : "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={e.status === "validated" ? "default" : e.status === "draft" ? "secondary" : "outline"}>
+                      {e.status ?? "—"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-medium">{e.total_score ?? "—"}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => openEdit(e)}>Modifier</Button>
+                      <Button size="sm" variant="destructive" onClick={() => remove(e.id)}>Supprimer</Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {!loading && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                    Aucune évaluation.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-3xl">
             <DialogHeader>
-              <DialogTitle>
-                {editing ? "Modifier évaluation" : "Nouvelle évaluation"}
-              </DialogTitle>
+              <DialogTitle>{editing ? "Modifier évaluation" : "Nouvelle évaluation"}</DialogTitle>
             </DialogHeader>
 
             <div className="grid gap-3">
-              <Label>Statut</Label>
-              <select
-                className="h-9 border rounded px-2"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as EvaluationStatus)}
-              >
-                <option value="draft">draft</option>
-                <option value="validated">validated</option>
-                <option value="archived">archived</option>
-              </select>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="grid gap-1">
+                  <Label>Statut</Label>
+                  <select
+                    className="h-9 rounded-md border px-2 bg-background"
+                    value={status ?? "draft"}
+                    onChange={(ev) => setStatus(ev.target.value as EvaluationStatus)}
+                  >
+                    <option value="draft">draft</option>
+                    <option value="validated">validated</option>
+                    <option value="archived">archived</option>
+                  </select>
+                </div>
+                <div className="grid gap-1 col-span-2">
+                  <Label>Score total</Label>
+                  <Input value={totalScore} onChange={(e) => setTotalScore(e.target.value)} placeholder="0.00" />
+                </div>
+              </div>
 
-              <Label>Score</Label>
-              <Input value={totalScore} onChange={(e) => setTotalScore(e.target.value)} />
+              <div className="grid gap-1">
+                <Label>Payload (JSON)</Label>
+                <Textarea className="font-mono text-xs min-h-[260px]" value={payload} onChange={(e) => setPayload(e.target.value)} />
+              </div>
 
-              <Label>Payload JSON</Label>
-              <Textarea
-                className="font-mono text-xs min-h-[200px]"
-                value={payload}
-                onChange={(e) => setPayload(e.target.value)}
-              />
+              {error && <div className="text-sm text-red-600">{error}</div>}
 
-              {error && <div className="text-red-600 text-sm">{error}</div>}
-
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
                 <Button onClick={save}>Enregistrer</Button>
               </div>
