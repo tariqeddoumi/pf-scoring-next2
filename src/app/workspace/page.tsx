@@ -25,9 +25,8 @@ export default function WorkspacePage() {
   const [selectedClient, setSelectedClient] = React.useState<ClientRow | null>(
     null
   );
-  const [selectedProject, setSelectedProject] = React.useState<ProjectRow | null>(
-    null
-  );
+  const [selectedProject, setSelectedProject] =
+    React.useState<ProjectRow | null>(null);
 
   // Modal client
   const [openClientModal, setOpenClientModal] = React.useState(false);
@@ -43,7 +42,9 @@ export default function WorkspacePage() {
     : "—";
 
   const projectLabel = selectedProject
-    ? `${selectedProject.project_code || "—"} · ${selectedProject.name || "—"}`
+    ? `${(selectedProject as any).project_code || (selectedProject as any).code_project || "—"} · ${
+        selectedProject.name || "—"
+      }`
     : "—";
 
   function resetAll() {
@@ -91,9 +92,8 @@ export default function WorkspacePage() {
         >
           {/* 1) Clients */}
           <AccordionItem value="clients" className="rounded-lg border bg-card">
-            <AccordionTrigger className="px-4">
-              1) Clients
-            </AccordionTrigger>
+            <AccordionTrigger className="px-4">1) Clients</AccordionTrigger>
+
             <AccordionContent className="px-4 pb-4">
               <div className="flex items-center justify-end gap-2 mb-3">
                 <Button
@@ -105,18 +105,28 @@ export default function WorkspacePage() {
                 >
                   + Nouveau client
                 </Button>
+
+                {/* Optionnel: bouton “Modifier” sur client sélectionné */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!selectedClient}
+                  onClick={() => {
+                    if (!selectedClient) return;
+                    setEditingClient(selectedClient);
+                    setOpenClientModal(true);
+                  }}
+                >
+                  Modifier
+                </Button>
               </div>
 
               <ClientTable
                 selectedClient={selectedClient}
-                onSelect={(c) => {
+                onSelect={(c: ClientRow) => {
                   setSelectedClient(c);
                   setSelectedProject(null);
                   setAccValue("projects");
-                }}
-                onEdit={(c) => {
-                  setEditingClient(c);
-                  setOpenClientModal(true);
                 }}
               />
             </AccordionContent>
@@ -127,6 +137,7 @@ export default function WorkspacePage() {
             <AccordionTrigger className="px-4">
               2) Projets du client
             </AccordionTrigger>
+
             <AccordionContent className="px-4 pb-4">
               {!selectedClient ? (
                 <div className="text-sm text-muted-foreground">
@@ -136,7 +147,7 @@ export default function WorkspacePage() {
                 <ProjectTable
                   client={selectedClient}
                   selectedProject={selectedProject}
-                  onSelect={(p) => {
+                  onSelect={(p: ProjectRow) => {
                     setSelectedProject(p);
                     setAccValue("scoring");
                   }}
@@ -148,6 +159,7 @@ export default function WorkspacePage() {
           {/* 3) Scoring */}
           <AccordionItem value="scoring" className="rounded-lg border bg-card">
             <AccordionTrigger className="px-4">3) Scoring</AccordionTrigger>
+
             <AccordionContent className="px-4 pb-4">
               {!selectedProject ? (
                 <div className="text-sm text-muted-foreground">
@@ -164,6 +176,7 @@ export default function WorkspacePage() {
             <AccordionTrigger className="px-4">
               4) Crédits &amp; Financements
             </AccordionTrigger>
+
             <AccordionContent className="px-4 pb-4">
               {!selectedProject ? (
                 <div className="text-sm text-muted-foreground">
@@ -180,8 +193,15 @@ export default function WorkspacePage() {
             <AccordionTrigger className="px-4">
               5) Synthèse &amp; Historique
             </AccordionTrigger>
+
             <AccordionContent className="px-4 pb-4">
-              <SummaryPanel client={selectedClient} project={selectedProject} />
+              {selectedClient && selectedProject ? (
+                <SummaryPanel client={selectedClient} project={selectedProject} />
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Sélectionne un client et un projet pour afficher la synthèse.
+                </div>
+              )}
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -191,10 +211,11 @@ export default function WorkspacePage() {
       <ClientFormModal
         open={openClientModal}
         onOpenChange={setOpenClientModal}
+        mode={editingClient ? "edit" : "create"}
         client={editingClient}
         onSaved={() => {
-          // ✅ le plus simple : ClientTable doit exposer un refresh interne
-          // Si tu n’as pas encore, tu peux juste recharger la page temporairement :
+          setOpenClientModal(false);
+          // Optionnel : si ClientTable ne se refresh pas automatiquement
           // window.location.reload();
         }}
       />
