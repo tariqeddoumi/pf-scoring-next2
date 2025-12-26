@@ -53,7 +53,6 @@ export default function CreditTable({ project }: Props) {
   }, [project.id]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLoans();
   }, [fetchLoans]);
 
