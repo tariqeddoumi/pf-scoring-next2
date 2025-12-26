@@ -55,7 +55,6 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
   useEffect(() => {
     // Le plugin eslint "react-hooks/set-state-in-effect" est très strict.
     // On autorise explicitement l’appel de fetch initial ici.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchClients();
   }, [fetchClients]);
 
