@@ -56,7 +56,6 @@ export default function ScoringPanel({ project }: Props) {
   }, [project.id]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEvals();
   }, [fetchEvals]);
 
