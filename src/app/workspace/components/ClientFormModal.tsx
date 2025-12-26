@@ -1,73 +1,51 @@
 "use client";
 
-import * as React from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import type { ClientRow, ClientStatus } from "../types";
 
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
-import type { ClientRow } from "../types";
-
-type ClientStatus = "Actif" | "Archivé";
+export type ClientFormMode = "create" | "edit";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 
-  /** si null => création */
+  mode: ClientFormMode;
   client: ClientRow | null;
 
-  /** callback après save pour recharger la liste */
-  onSaved?: () => void;
+  onSaved: () => Promise<void> | void;
 };
 
-const CLIENTS_TABLE = "clients";
+function errMsg(e: unknown) {
+  return e instanceof Error ? e.message : "Erreur inattendue.";
+}
 
-export default function ClientFormModal({
-  open,
-  onOpenChange,
-  client,
-  onSaved,
-}: Props) {
-  const isEdit = !!client?.id;
+export default function ClientFormModal({ open, onOpenChange, mode, client, onSaved }: Props) {
+  const title = useMemo(() => (mode === "create" ? "Nouveau client" : "Modifier client"), [mode]);
 
-  const [name, setName] = React.useState("");
-  const [radical, setRadical] = React.useState("");
-  const [segment, setSegment] = React.useState("");
-  const [status, setStatus] = React.useState<ClientStatus>("Actif");
-  const [notes, setNotes] = React.useState("");
+  const [name, setName] = useState("");
+  const [radical, setRadical] = useState("");
+  const [segment, setSegment] = useState("");
+  const [status, setStatus] = useState<ClientStatus>("Actif");
+  const [notes, setNotes] = useState("");
 
-  const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
 
-    setError(null);
-
-    if (client) {
+    if (mode === "edit" && client) {
       setName(client.name ?? "");
       setRadical(client.radical ?? "");
       setSegment(client.segment ?? "");
-      setStatus((client.status as ClientStatus) ?? "Actif");
+      setStatus(client.status ?? "Actif");
       setNotes(client.notes ?? "");
     } else {
       setName("");
@@ -76,43 +54,44 @@ export default function ClientFormModal({
       setStatus("Actif");
       setNotes("");
     }
-  }, [open, client]);
+    setError(null);
+  }, [open, mode, client]);
 
-  const canSave = name.trim().length >= 2;
-
-  async function handleSave() {
+  async function save() {
     setError(null);
 
-    if (!canSave) {
-      setError("Le nom est obligatoire (min 2 caractères).");
+    if (!name.trim()) {
+      setError("Le nom du client est obligatoire.");
       return;
     }
 
-    setSaving(true);
-    try {
-      const payload: Partial<ClientRow> = {
-        name: name.trim(),
-        radical: radical.trim() || "",
-        segment: segment.trim() || "",
-        status,
-        notes: notes.trim() || "",
-      };
+    const payload: Partial<ClientRow> = {
+      name: name.trim(),
+      radical: radical.trim() ? radical.trim() : undefined,
+      segment: segment.trim() ? segment.trim() : undefined,
+      status,
+      notes: notes.trim() ? notes.trim() : undefined,
+      updated_at: new Date().toISOString(),
+    };
 
-      if (isEdit && client?.id) {
-        const { error: e } = await supabase
-          .from(CLIENTS_TABLE)
-          .update(payload)
-          .eq("id", client.id);
-        if (e) throw e;
+    try {
+      setSaving(true);
+
+      if (mode === "edit" && client) {
+        const { error } = await supabase.from("clients").update(payload).eq("id", client.id);
+        if (error) throw error;
       } else {
-        const { error: e } = await supabase.from(CLIENTS_TABLE).insert(payload);
-        if (e) throw e;
+        const { error } = await supabase.from("clients").insert({
+          ...payload,
+          created_at: new Date().toISOString(),
+        });
+        if (error) throw error;
       }
 
-      onSaved?.();
       onOpenChange(false);
-    } catch (e: any) {
-      setError(e?.message ?? "Erreur inconnue.");
+      await onSaved();
+    } catch (e: unknown) {
+      setError(errMsg(e));
     } finally {
       setSaving(false);
     }
@@ -120,111 +99,61 @@ export default function ClientFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 overflow-hidden">
-        {/* Header */}
-        <div className="border-b bg-muted/30 px-6 py-4">
-          <DialogHeader>
-            <DialogTitle className="text-xl">
-              {isEdit ? "Modifier le client" : "Ajouter un client"}
-            </DialogTitle>
-            <DialogDescription>
-              Renseigne les informations puis enregistre.
-            </DialogDescription>
-          </DialogHeader>
-        </div>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
 
-        {/* Body scrollable */}
-        <div className="px-6 py-5 max-h-[70vh] overflow-auto">
-          {error && (
-            <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-              <span className="font-medium">Erreur :</span> {error}
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label>Nom *</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Société ABC" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label>Radical</Label>
+              <Input value={radical} onChange={(e) => setRadical(e.target.value)} placeholder="Ex: 1234567" />
             </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Nom */}
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="name">
-                Nom <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Société XYZ"
-              />
-              <div className="text-xs text-muted-foreground">
-                Minimum 2 caractères.
-              </div>
-            </div>
-
-            {/* Radical */}
-            <div className="space-y-2">
-              <Label htmlFor="radical">Radical</Label>
-              <Input
-                id="radical"
-                value={radical}
-                onChange={(e) => setRadical(e.target.value)}
-                placeholder="Ex: 1234567"
-              />
-            </div>
-
-            {/* Segment */}
-            <div className="space-y-2">
-              <Label htmlFor="segment">Segment</Label>
-              <Input
-                id="segment"
-                value={segment}
-                onChange={(e) => setSegment(e.target.value)}
-                placeholder="Ex: PME / GE / ..."
-              />
-            </div>
-
-            {/* Statut */}
-            <div className="space-y-2">
-              <Label>Statut</Label>
-              <Select
-                value={status}
-                onValueChange={(v) => setStatus(v as ClientStatus)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir un statut" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Actif">Actif</SelectItem>
-                  <SelectItem value="Archivé">Archivé</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Commentaires / informations complémentaires..."
-                className="min-h-[110px]"
-              />
+            <div className="grid gap-2">
+              <Label>Segment</Label>
+              <Input value={segment} onChange={(e) => setSegment(e.target.value)} placeholder="Ex: Corporate / PME" />
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="border-t bg-muted/20 px-6 py-4">
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={saving}
-            >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+            <div className="grid gap-2">
+              <Label>Statut</Label>
+              <select
+                className="h-9 rounded-md border px-2 bg-background"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as ClientStatus)}
+              >
+                <option value="Actif">Actif</option>
+                <option value="Archivé">Archivé</option>
+              </select>
+            </div>
+
+            <div className="text-sm text-muted-foreground">
+              Astuce : utilise “Archivé” plutôt que supprimer si tu veux garder l’historique.
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes internes…" />
+          </div>
+
+          {error && <div className="text-sm text-red-600">{error}</div>}
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Annuler
             </Button>
-            <Button onClick={handleSave} disabled={saving || !canSave}>
-              {saving ? "Enregistrement..." : "Enregistrer"}
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Enregistrement…" : "Enregistrer"}
             </Button>
-          </DialogFooter>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
