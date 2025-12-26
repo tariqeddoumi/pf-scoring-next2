@@ -1,67 +1,66 @@
 // src/app/workspace/types.ts
 
 export type ClientStatus = "Actif" | "Archivé";
-export type ProjectStatus = "draft" | "validated" | "archived"; // garde ça simple pour l'instant
+export type ProjectStatus = "draft" | "validated" | "archived";
+export type EvaluationStatus = "draft" | "validated" | "archived";
 export type LoanStatus = "draft" | "validated" | "archived";
 
 export type ClientRow = {
   id: string;
-  created_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 
   name: string;
-  radical?: string;   // en DB: nullable -> on garde optional
-  segment?: string;
+  radical?: string | null;
+  segment?: string | null;
   status: ClientStatus;
-
-  notes?: string;
+  notes?: string | null;
 };
 
 export type ProjectRow = {
   id: string;
-  created_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 
   client_id: string;
 
   name: string;
-  project_code?: string;
+  project_code?: string | null;      // ✅ utilisé dans SummaryPanel + page badges
+  project_type?: string | null;      // ✅ utilisé dans SummaryPanel
+  city?: string | null;
 
-  city?: string;
-
-  // IMPORTANT: on standardise sur project_type (pas "type")
-  project_type?: string;
+  total_cost?: number | null;
+  financing_amount?: number | null;
 
   status: ProjectStatus;
-  notes?: string;
-
-  // si tu as ces champs en base ils s’afficheront, sinon ignore
-  total_cost?: number;
-  financing_amount?: number;
+  notes?: string | null;
 };
 
 export type LoanRow = {
   id: string;
-  created_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 
   project_id: string;
 
-  facility_type?: string;
-  currency?: string;
-  amount?: number;
-  tenor_months?: number;
-  rate?: number;
-  status?: LoanStatus;
-  notes?: string;
+  facility_type: string;             // ✅ requis
+  amount?: number | null;
+  currency?: string | null;
+  tenor_months?: number | null;
+  pricing?: number | null;
+
+  status: LoanStatus;
+  notes?: string | null;
 };
 
 export type EvaluationRow = {
   id: string;
-  created_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 
   project_id: string;
+  status: EvaluationStatus;
 
-  status?: "draft" | "validated" | "archived";
-  total_score?: number;
-
-  // structure libre (JSON) pour dimensions / réponses
-  payload?: any;
+  total_score?: number | null;
+  payload?: unknown | null;          // ✅ pas de any
 };
