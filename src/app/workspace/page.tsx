@@ -41,11 +41,9 @@ export default function WorkspacePage() {
     ? `${selectedClient.radical || "—"} · ${selectedClient.name || "—"}`
     : "—";
 
-  const projectLabel = selectedProject
-    ? `${(selectedProject as any).project_code || (selectedProject as any).code_project || "—"} · ${
-        selectedProject.name || "—"
-      }`
-    : "—";
+const projectLabel = selectedProject
+  ? `${(selectedProject.code_project ?? "—")} · ${selectedProject.name || "—"}`
+  : "—";
 
   function resetAll() {
     setSelectedClient(null);
