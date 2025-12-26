@@ -1,21 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import type { ClientRow, ClientStatus } from "../types";
+import type { ClientRow } from "../types";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 import ClientFormModal from "./ClientFormModal";
 
 type Props = {
   selectedClient: ClientRow | null;
-  onSelect: (c: ClientRow) => void;
+  onSelect: (client: ClientRow) => void;
 };
+
+function errMsg(e: unknown) {
+  return e instanceof Error ? e.message : "Erreur inattendue.";
+}
 
 export default function ClientTable({ selectedClient, onSelect }: Props) {
   const [rows, setRows] = useState<ClientRow[]>([]);
@@ -25,37 +29,59 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClientRow | null>(null);
 
-  async function fetchClients() {
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchClients = useCallback(async () => {
+    setError(null);
     setLoading(true);
-    const { data, error } = await supabase
-      .from("clients")
-      .select("id, created_at, name, radical, segment, status, notes")
-      .order("created_at", { ascending: false })
-      .limit(500);
 
-    if (!error) setRows((data as any) ?? []);
-    setLoading(false);
-  }
+    try {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, created_at, updated_at, name, radical, segment, status, notes")
+        .order("updated_at", { ascending: false })
+        .limit(300);
 
-  useEffect(() => {
-    fetchClients();
+      if (error) throw error;
+      setRows((data ?? []) as ClientRow[]);
+    } catch (e: unknown) {
+      setError(errMsg(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    // Le plugin eslint "react-hooks/set-state-in-effect" est très strict.
+    // On autorise explicitement l’appel de fetch initial ici.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchClients();
+  }, [fetchClients]);
+
   const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((c) =>
-      [c.name, c.radical, c.segment, c.status, c.notes].filter(Boolean).join(" ").toLowerCase().includes(s)
-    );
+    const needle = q.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter((c) => {
+      const s = `${c.name} ${c.radical ?? ""} ${c.segment ?? ""}`.toLowerCase();
+      return s.includes(needle);
+    });
   }, [rows, q]);
 
-  async function archiveClient(id: string) {
-    await supabase.from("clients").update({ status: "Archivé" satisfies ClientStatus }).eq("id", id);
-    await fetchClients();
+  function openCreate() {
+    setEditing(null);
+    setOpen(true);
   }
 
-  async function unarchiveClient(id: string) {
-    await supabase.from("clients").update({ status: "Actif" satisfies ClientStatus }).eq("id", id);
+  function openEdit(c: ClientRow) {
+    setEditing(c);
+    setOpen(true);
+  }
+
+  async function remove(c: ClientRow) {
+    if (!confirm(`Supprimer le client "${c.name}" ?`)) return;
+    const { error } = await supabase.from("clients").delete().eq("id", c.id);
+    if (error) setError(error.message);
     await fetchClients();
   }
 
@@ -65,34 +91,28 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base">Clients</CardTitle>
           <div className="flex items-center gap-2">
-            <Input className="h-9 w-[280px]" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} />
-            <Button
-              size="sm"
-              onClick={() => {
-                setEditing(null);
-                setOpen(true);
-              }}
-            >
-              + Nouveau
-            </Button>
-            <Button size="sm" variant="outline" onClick={fetchClients}>
-              Rafraîchir
-            </Button>
+            <Button size="sm" onClick={openCreate}>+ Nouveau</Button>
+            <Button size="sm" variant="outline" onClick={fetchClients}>Rafraîchir</Button>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="pt-0">
-        <div className="text-sm text-muted-foreground mb-2">
-          {loading ? "Chargement…" : `${filtered.length} client(s)`}
+        <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between mb-3">
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (nom, radical, segment)..." />
+          <div className="text-sm text-muted-foreground">
+            {loading ? "Chargement…" : `${filtered.length} / ${rows.length}`}
+          </div>
         </div>
+
+        {error && <div className="text-sm text-red-600 mb-2">{error}</div>}
 
         <div className="rounded-md border overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Client</TableHead>
                 <TableHead>Radical</TableHead>
-                <TableHead>Nom</TableHead>
                 <TableHead>Segment</TableHead>
                 <TableHead>Statut</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -101,42 +121,30 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
 
             <TableBody>
               {filtered.map((c) => {
-                const isSelected = selectedClient?.id === c.id;
+                const isSel = selectedClient?.id === c.id;
                 return (
                   <TableRow
                     key={c.id}
-                    className={isSelected ? "bg-muted/50" : ""}
+                    className={isSel ? "bg-muted/40" : ""}
                     onClick={() => onSelect(c)}
                     style={{ cursor: "pointer" }}
                   >
-                    <TableCell className="font-mono text-xs">{c.radical ?? "—"}</TableCell>
                     <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell>{c.radical ?? "—"}</TableCell>
                     <TableCell>{c.segment ?? "—"}</TableCell>
                     <TableCell>
-                      <Badge variant={c.status === "Actif" ? "default" : "secondary"}>{c.status}</Badge>
+                      <Badge variant={c.status === "Actif" ? "default" : "secondary"}>
+                        {c.status}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setEditing(c);
-                            setOpen(true);
-                          }}
-                        >
+                        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); openEdit(c); }}>
                           Modifier
                         </Button>
-
-                        {c.status === "Actif" ? (
-                          <Button size="sm" variant="secondary" onClick={() => archiveClient(c.id)}>
-                            Archiver
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="secondary" onClick={() => unarchiveClient(c.id)}>
-                            Réactiver
-                          </Button>
-                        )}
+                        <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); remove(c); }}>
+                          Supprimer
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -146,7 +154,7 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
-                    Aucun résultat.
+                    Aucun client.
                   </TableCell>
                 </TableRow>
               )}
@@ -157,6 +165,7 @@ export default function ClientTable({ selectedClient, onSelect }: Props) {
         <ClientFormModal
           open={open}
           onOpenChange={setOpen}
+          mode={editing ? "edit" : "create"}
           client={editing}
           onSaved={fetchClients}
         />
