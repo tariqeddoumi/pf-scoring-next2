@@ -55,7 +55,6 @@ export default function ProjectTable({ client, selectedProject, onSelect }: Prop
   }, [client.id]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProjects();
   }, [fetchProjects]);
 
