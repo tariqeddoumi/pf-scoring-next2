@@ -42,7 +42,7 @@ export default function WorkspacePage() {
     : "—";
 
 const projectLabel = selectedProject
-  ? `${(selectedProject.code_project ?? "—")} · ${selectedProject.name || "—"}`
+  ? `${selectedProject.project_code ?? "—"} · ${selectedProject.name || "—"}`
   : "—";
 
   function resetAll() {
