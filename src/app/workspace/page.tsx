@@ -24,13 +24,9 @@ export default function WorkspacePage() {
   const [selectedClient, setSelectedClient] = React.useState<ClientRow | null>(null);
   const [selectedProject, setSelectedProject] = React.useState<ProjectRow | null>(null);
 
-  // Modal Client
+  // Modal client
   const [openClientModal, setOpenClientModal] = React.useState(false);
   const [editingClient, setEditingClient] = React.useState<ClientRow | null>(null);
-
-  // Remount keys (force refresh sans toucher aux props internes)
-  const [clientsKey, setClientsKey] = React.useState(0);
-  const [projectsKey, setProjectsKey] = React.useState(0);
 
   // Accordion
   const [accValue, setAccValue] = React.useState<string>("clients");
@@ -51,8 +47,6 @@ export default function WorkspacePage() {
     setAccValue("clients");
   }
 
-  const canEditClient = Boolean(selectedClient);
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -69,7 +63,9 @@ export default function WorkspacePage() {
             <div className="flex flex-wrap items-center gap-2 justify-end">
               <Badge variant="secondary">Client: {clientLabel}</Badge>
               <Badge variant="secondary">Projet: {projectLabel}</Badge>
-              <Button variant="outline" onClick={resetAll}>Réinitialiser</Button>
+              <Button variant="outline" onClick={resetAll}>
+                Réinitialiser
+              </Button>
             </div>
           </div>
         </div>
@@ -81,14 +77,14 @@ export default function WorkspacePage() {
           type="single"
           collapsible
           value={accValue}
-          onValueChange={(v: string) => setAccValue(v || "clients")}
+          onValueChange={(v) => setAccValue(v || "clients")}
           className="space-y-3"
         >
           {/* 1) Clients */}
           <AccordionItem value="clients" className="rounded-lg border bg-card">
             <AccordionTrigger className="px-4">1) Clients</AccordionTrigger>
             <AccordionContent className="px-4 pb-4">
-              <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-2 mb-3">
                 <Button
                   size="sm"
                   onClick={() => {
@@ -98,30 +94,18 @@ export default function WorkspacePage() {
                 >
                   + Nouveau client
                 </Button>
-
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!canEditClient}
-                  onClick={() => {
-                    if (!selectedClient) return;
-                    setEditingClient(selectedClient);
-                    setOpenClientModal(true);
-                  }}
-                >
-                  Modifier
-                </Button>
               </div>
 
-              {/* On ne passe PAS onEdit (ça t’a cassé le typecheck). */}
               <ClientTable
-                key={clientsKey}
                 selectedClient={selectedClient}
-                onSelect={(c: ClientRow) => {
+                onSelect={(c) => {
                   setSelectedClient(c);
                   setSelectedProject(null);
-                  setProjectsKey((k) => k + 1); // force refresh projets
                   setAccValue("projects");
+                }}
+                onEdit={(c: ClientRow) => {
+                  setEditingClient(c);
+                  setOpenClientModal(true);
                 }}
               />
             </AccordionContent>
@@ -135,10 +119,9 @@ export default function WorkspacePage() {
                 <div className="text-sm text-muted-foreground">Sélectionne d’abord un client.</div>
               ) : (
                 <ProjectTable
-                  key={projectsKey}
                   client={selectedClient}
                   selectedProject={selectedProject}
-                  onSelect={(p: ProjectRow) => {
+                  onSelect={(p) => {
                     setSelectedProject(p);
                     setAccValue("scoring");
                   }}
@@ -185,20 +168,14 @@ export default function WorkspacePage() {
         </Accordion>
       </div>
 
-      {/* Modal Client */}
+      {/* Modal */}
       <ClientFormModal
         open={openClientModal}
-        onOpenChange={(v) => {
-          setOpenClientModal(v);
-          if (!v) setEditingClient(null);
-        }}
+        onOpenChange={setOpenClientModal}
         client={editingClient}
-        onSaved={(saved) => {
-          // refresh list
-          setClientsKey((k) => k + 1);
-
-          // si on était en édition, on met à jour la sélection
-          setSelectedClient((prev) => (prev && saved.id === prev.id ? saved : prev));
+        onSaved={() => {
+          // Option simple: rien ici (ClientTable a un bouton rafraîchir).
+          // Si tu veux un refresh auto, dis-moi et je te fais une version avec "refreshKey".
         }}
       />
     </div>
