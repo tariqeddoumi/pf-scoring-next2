@@ -26,7 +26,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
+      
+      - name: Debug Tailwind packages
+        run: |
+          npm ls tailwindcss postcss autoprefixer
+          
       - name: Lint
         run: npm run lint
 
