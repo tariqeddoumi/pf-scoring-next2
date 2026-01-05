@@ -73,11 +73,3 @@
     @apply bg-background text-foreground;
   }
 }
-
-/* (optionnel) enlever le triangle du <summary> si tu utilises <details> */
-summary {
-  list-style: none;
-}
-summary::-webkit-details-marker {
-  display: none;
-}
