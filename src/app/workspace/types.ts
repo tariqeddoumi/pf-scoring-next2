@@ -19,22 +19,25 @@ export type ClientRow = {
 
 export type ProjectRow = {
   id: string;
-  created_at?: string | null;
-  updated_at?: string | null;
-
   client_id: string;
 
-  name: string;
-  project_code?: string | null;      // ✅ utilisé dans SummaryPanel + page badges
-  project_type?: string | null;      // ✅ utilisé dans SummaryPanel
-  city?: string | null;
+  project_code: string | null;
+  name: string | null;
+  city: string | null;
 
-  total_cost?: number | null;
-  financing_amount?: number | null;
+  project_type: string | null;
 
-  status: ProjectStatus;
-  notes?: string | null;
+  // ✅ AJOUT : devise projet (optionnelle pour ne pas casser si colonne absente)
+  currency?: string | null;
+
+  total_cost: number | null;
+  financing_amount: number | null;
+
+  status: "draft" | "validated" | "archived";
+  created_at?: string | null;
+  updated_at?: string | null;
 };
+
 
 export type LoanRow = {
   id: string;
