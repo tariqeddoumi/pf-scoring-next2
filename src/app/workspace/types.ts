@@ -24,12 +24,12 @@ export type ProjectRow = {
   project_code: string | null;
   name: string | null;
   city: string | null;
-
   project_type: string | null;
 
-  // ✅ AJOUT : devise projet (optionnelle pour ne pas casser si colonne absente)
-  currency?: string | null;
+  // ✅ AJOUT
+  notes?: string | null;
 
+  currency?: string | null;
   total_cost: number | null;
   financing_amount: number | null;
 
