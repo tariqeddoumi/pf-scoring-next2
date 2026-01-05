@@ -1,7 +1,9 @@
+// src/app/workspace/components/SummaryPanel.tsx
 "use client";
 
 import * as React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
 import type { ClientRow, ProjectRow } from "../types";
 
 type Props = {
@@ -9,63 +11,81 @@ type Props = {
   project: ProjectRow | null;
 };
 
-function fmtMoney(v: number | null | undefined, ccy = "MAD") {
-  if (v === null || v === undefined) return "—";
+function formatMoney(amount: number | null | undefined, currency?: string | null) {
+  const v = typeof amount === "number" ? amount : 0;
+  const c = currency ?? "MAD";
   try {
     return new Intl.NumberFormat("fr-FR", {
       style: "currency",
-      currency: ccy,
-      maximumFractionDigits: 0,
+      currency: c,
+      maximumFractionDigits: 2,
     }).format(v);
   } catch {
-    return `${v} ${ccy}`;
+    // currency non standard -> fallback
+    return `${v.toLocaleString("fr-FR")} ${c}`;
   }
 }
 
 export default function SummaryPanel({ client, project }: Props) {
+  if (!client && !project) {
+    return (
+      <div className="text-sm text-muted-foreground">
+        Sélectionnez un client et un projet pour afficher la synthèse.
+      </div>
+    );
+  }
+
   return (
-    <Card className="border bg-card">
-      <CardHeader>
-        <CardTitle>Synthèse</CardTitle>
-      </CardHeader>
+    <div className="space-y-4">
+      {/* Client */}
+      <div className="rounded-lg border bg-background p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Client</div>
+          {client ? (
+            <Badge variant={client.status === "Actif" ? "default" : "secondary"}>
+              {client.status}
+            </Badge>
+          ) : null}
+        </div>
 
-      <CardContent className="space-y-4 text-sm">
-        {!client && !project ? (
+        <div className="mt-2 text-sm">
+          <div className="font-medium">{client?.name ?? "—"}</div>
           <div className="text-muted-foreground">
-            Sélectionnez un client et un projet pour afficher la synthèse.
+            Radical: {client?.radical ?? "—"} • Segment: {client?.segment ?? "—"}
           </div>
-        ) : null}
+        </div>
+      </div>
 
-        {client ? (
-          <div className="space-y-1">
-            <div className="font-medium">Client</div>
-            <div>{client.name ?? "—"}</div>
-            <div className="text-muted-foreground">
-              Radical: {client.radical ?? "—"} • Segment: {client.segment ?? "—"} • Statut:{" "}
-              {client.status ?? "—"}
+      {/* Projet */}
+      <div className="rounded-lg border bg-background p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Projet</div>
+          {project ? <Badge variant="secondary">{project.status}</Badge> : null}
+        </div>
+
+        <div className="mt-2 text-sm space-y-1">
+          <div className="font-medium">{project?.name ?? "—"}</div>
+          <div className="text-muted-foreground">
+            Code: {project?.project_code ?? "—"} • Ville: {project?.city ?? "—"} • Type:{" "}
+            {project?.project_type ?? "—"}
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="text-xs text-muted-foreground">Coût total</div>
+            <div className="text-sm font-semibold">
+              {formatMoney(project?.total_cost ?? null, project?.currency)}
             </div>
           </div>
-        ) : null}
-
-        {project ? (
-          <div className="space-y-1">
-            <div className="font-medium">Projet</div>
-            <div>{project.name ?? "—"}</div>
-            <div className="text-muted-foreground">
-              Code: {project.project_code ?? "—"} • Ville: {project.city ?? "—"} • Type:{" "}
-              {project.type ?? "—"} • Statut: {project.status ?? "—"}
-            </div>
-
-            <div className="pt-2">
-              <div className="font-medium">Chiffres</div>
-              <div>Coût total: {fmtMoney(project.total_cost, project.currency ?? "MAD")}</div>
-              <div>
-                Financement: {fmtMoney(project.financing_amount, project.currency ?? "MAD")}
-              </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="text-xs text-muted-foreground">Financement</div>
+            <div className="text-sm font-semibold">
+              {formatMoney(project?.financing_amount ?? null, project?.currency)}
             </div>
           </div>
-        ) : null}
-      </CardContent>
-    </Card>
+        </div>
+      </div>
+    </div>
   );
 }
