@@ -7,14 +7,10 @@ export const metadata: Metadata = {
   description: "Workspace compact : client, projets, scoring, crédits et synthèse.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
-      <body className="bg-slate-50 text-slate-900">
+    <html lang="fr" suppressHydrationWarning>
+      <body className="min-h-screen bg-background text-foreground antialiased">
         {children}
       </body>
     </html>
