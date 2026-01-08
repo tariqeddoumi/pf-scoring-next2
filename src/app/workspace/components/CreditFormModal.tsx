@@ -187,17 +187,12 @@ export default function CreditFormModal({
 
       await onSaved?.();
       onOpenChange(false);
-    } catch (e: any) {
-      // 👉 montre enfin la vraie raison (RLS / colonne manquante / NaN / etc.)
-      const msg =
-        e?.message ||
-        e?.error_description ||
-        "Erreur inattendue lors de l’enregistrement.";
-      const details = e?.details ? ` (${e.details})` : "";
-      setError(`${msg}${details}`);
-    } finally {
-      setSaving(false);
-    }
+      } catch (err: unknown) {
+        setError(formatUnknownError(err));
+      } finally {
+        setSaving(false);
+      }
+
   }
 
   return (
