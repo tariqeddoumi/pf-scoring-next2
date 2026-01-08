@@ -67,3 +67,40 @@ export type EvaluationRow = {
   total_score?: number | null;
   payload?: unknown | null;          // ✅ pas de any
 };
+
+export type ScoringOption = {
+  id: string;
+  label: string;
+  score: number;
+};
+
+export type ScoringCriterion = {
+  id: string;
+  label: string;
+  weight?: number; // optionnel
+  options: ScoringOption[];
+};
+
+export type ScoringDomain = {
+  id: string;
+  label: string;
+  weight?: number; // optionnel
+  criteria: ScoringCriterion[];
+};
+
+export type ScoringTemplate = {
+  version: string; // ex: "v1.0"
+  domains: ScoringDomain[];
+};
+
+export type ScoreAnswer = {
+  domainId: string;
+  criterionId: string;
+  optionId: string;
+  score: number;
+};
+
+export type ScoreDetails = {
+  templateVersion: string;
+  answers: ScoreAnswer[];
+};
