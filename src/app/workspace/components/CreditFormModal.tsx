@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { formatUnknownError } from "@/lib/errors";
 
 import { Button } from "@/components/ui/button";
 import {
