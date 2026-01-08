@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-
+import ScoringDetailDialog from "./ScoringDetailDialog";
 import type { ProjectRow } from "../types";
 import EvaluationCompareDialog from "./ScoringCompareDialog";
 
@@ -88,7 +88,7 @@ function buildDomains(dimensions: DimensionRow[], criteria: CriteriaRow[], optio
 
   const rootsByDim = new Map<number, CriteriaRow[]>();
   const childrenByParent = new Map<number, CriteriaRow[]>();
-
+  
   for (const c of criteria) {
     if (c.parent_criterion_id == null) {
       const arr = rootsByDim.get(c.dimension_id) ?? [];
@@ -176,6 +176,10 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
   const [compareOpen, setCompareOpen] = React.useState(false);
   const [compareA, setCompareA] = React.useState<string | null>(null);
   const [compareB, setCompareB] = React.useState<string | null>(null);
+
+  const [detailOpen, setDetailOpen] = React.useState(false);
+  const [detailId, setDetailId] = React.useState<string | null>(null);
+  
 
   const computed = React.useMemo(() => {
     if (!domains.length) return { total: 0, domainScores: {} as Record<string, number> };
@@ -481,6 +485,17 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
             >
               Comparaison A/B
             </Button>
+            <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                    setDetailId(ev.id);
+                    setDetailOpen(true);
+                }}
+            >
+            Voir détail
+            </Button>
+
           </div>
 
           {history.length === 0 ? (
@@ -548,6 +563,12 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
         defaultA={compareA ?? history?.[0]?.id ?? null}
         defaultB={compareB ?? history?.[1]?.id ?? null}
       />
+      <ScoringDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        evaluationId={detailId}
+      />
+
     </div>
   );
 }
