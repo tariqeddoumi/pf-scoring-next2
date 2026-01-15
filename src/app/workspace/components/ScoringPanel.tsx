@@ -72,9 +72,14 @@ type Json =
   | Json[]
   | { [key: string]: Json };
 
-/** -------- Answer model (no any) -------- */
-type AnswerValue = string | number | boolean | null;
-type Answers = Record<number, { value?: AnswerValue; sub?: Record<number, { value?: AnswerValue }> }>;
+/** -------- Answer model (ALIGN with lib/scoring) --------
+ * IMPORTANT: no boolean here (matches your lib/scoring AnswerValue)
+ */
+type AnswerValue = string | number | null;
+type Answers = Record<
+  number,
+  { value?: AnswerValue; sub?: Record<number, { value?: AnswerValue }> }
+>;
 
 /** -------- Domain structures for computeScores -------- */
 type DomainOption = { id: number; value_label: string; score: number };
@@ -128,7 +133,6 @@ function asObj(v: Json): Record<string, Json> | null {
 }
 
 function jsonToAnswers(v: Json): Answers {
-  // We accept object keys as strings -> convert to numeric record
   const root = asObj(v);
   if (!root) return {};
 
@@ -143,14 +147,11 @@ function jsonToAnswers(v: Json): Answers {
     const value = entry.value;
     const subRaw = entry.sub;
 
-    const ans: { value?: AnswerValue; sub?: Record<number, { value?: AnswerValue }> } = {};
+    const ans: { value?: AnswerValue; sub?: Record<number, { value?: AnswerValue }> } =
+      {};
 
-    if (
-      value === null ||
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
+    // ✅ boolean excluded on purpose (align with lib/scoring)
+    if (value === null || typeof value === "string" || typeof value === "number") {
       ans.value = value;
     }
 
@@ -162,12 +163,12 @@ function jsonToAnswers(v: Json): Answers {
         if (!Number.isFinite(sid)) continue;
         const sEntry = asObj(sv);
         if (!sEntry) continue;
+
         const sval = sEntry.value;
         if (
           sval === null ||
           typeof sval === "string" ||
-          typeof sval === "number" ||
-          typeof sval === "boolean"
+          typeof sval === "number"
         ) {
           subOut[sid] = { value: sval };
         }
@@ -208,9 +209,7 @@ function buildDomains(
     }
   }
 
-  const dimsSorted = dimensions
-    .slice()
-    .sort((a, b) => a.id - b.id);
+  const dimsSorted = dimensions.slice().sort((a, b) => a.id - b.id);
 
   return dimsSorted.map((d) => {
     const roots = (rootsByDim.get(d.id) ?? [])
@@ -285,17 +284,16 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
 
   const [answers, setAnswers] = React.useState<Answers>({});
 
-  // Evaluation set + history
   const [evalSetId, setEvalSetId] = React.useState<string | null>(null);
   const [history, setHistory] = React.useState<EvalRow[]>([]);
   const [activeEval, setActiveEval] = React.useState<EvalRow | null>(null);
 
-  // Detail modal
   const [detailOpen, setDetailOpen] = React.useState(false);
   const [detailEvalId, setDetailEvalId] = React.useState<string | null>(null);
 
   const computed = React.useMemo(() => {
     if (!domains.length) return { total: 0, domainScores: {} as Record<string, number> };
+    // ✅ now our Answers matches lib/scoring expectation
     return computeScores(domains, answers);
   }, [domains, answers]);
 
@@ -352,7 +350,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
     setGradeBuckets(gb);
 
     setDomains(buildDomains(d, c, o));
-
     setLoading(false);
   }
 
@@ -448,7 +445,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
   function startNewEvaluation(): void {
     setActiveEval(null);
     setAnswers({});
-    // pas besoin de créer en DB tout de suite
   }
 
   function loadEvaluationIntoForm(ev: EvalRow): void {
@@ -487,7 +483,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
       results: Json;
       total_score: number;
       grade: string;
-      pd: number;
+      pd: number | null; // ✅ FIX: allow null
       validated_at: string | null;
     } = {
       set_id: setId,
@@ -500,7 +496,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
       },
       total_score: computed.total,
       grade: gradeInfo.grade,
-      pd: gradeInfo.pd,
+      pd: gradeInfo.pd ?? null, // ✅ FIX
       validated_at: validate ? new Date().toISOString() : null,
     };
 
@@ -522,10 +518,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
       <div className="rounded-md border p-4">
         <div className="font-medium mb-1">Impossible de charger le référentiel de scoring</div>
         <div className="text-sm text-red-600">{loadErr}</div>
-        <div className="text-sm text-muted-foreground mt-2">
-          Vérifie : tables <code>scoring_dimensions</code>/<code>scoring_criteria</code>/<code>scoring_options</code>{" "}
-          non vides + policies RLS en SELECT.
-        </div>
         <div className="mt-3">
           <Button
             variant="outline"
@@ -550,7 +542,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
         <div className="font-medium mb-1">Aucun référentiel de scoring trouvé</div>
         <div className="text-sm text-muted-foreground">
           Les tables de paramétrage sont probablement vides (dimensions/critères/options).
-          Il faut importer la grille V4 dans ces tables.
         </div>
       </div>
     );
@@ -581,31 +572,15 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
               </Button>
 
               <Button
-                variant="outline"
-                size="sm"
-                disabled={!activeEval || activeEval.status !== "draft"}
-                onClick={() => activeEval && loadEvaluationIntoForm(activeEval)}
-                title="Continuer uniquement un draft"
-              >
-                Modifier / Continuer
-              </Button>
-
-              <Button
                 variant="secondary"
                 size="sm"
                 disabled={!canEditActive}
                 onClick={() => void saveEvaluation(false)}
-                title={!canEditActive ? "Une évaluation validée n'est pas modifiable (crée une nouvelle version)" : ""}
               >
                 Sauver (draft)
               </Button>
 
-              <Button
-                size="sm"
-                disabled={!canEditActive}
-                onClick={() => void saveEvaluation(true)}
-                title={!canEditActive ? "Une évaluation validée n'est pas modifiable (crée une nouvelle version)" : ""}
-              >
+              <Button size="sm" disabled={!canEditActive} onClick={() => void saveEvaluation(true)}>
                 Valider
               </Button>
             </div>
@@ -692,13 +667,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
                               })}
                             </div>
                           ) : null}
-
-                          {!canEditActive ? (
-                            <div className="text-xs text-muted-foreground">
-                              Cette version est <strong>validée</strong>. Pour changer la saisie : clique{" "}
-                              <strong>Nouvelle évaluation</strong> puis sauvegarde (nouvelle version).
-                            </div>
-                          ) : null}
                         </CardContent>
                       </Card>
                     );
@@ -745,11 +713,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
                     </TableCell>
 
                     <TableCell className="text-right space-x-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => loadEvaluationIntoForm(ev)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => loadEvaluationIntoForm(ev)}>
                         Charger
                       </Button>
 
@@ -762,16 +726,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
                         }}
                       >
                         Voir détail
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={ev.status !== "draft"}
-                        onClick={() => loadEvaluationIntoForm(ev)}
-                        title={ev.status !== "draft" ? "On ne modifie pas une version validée (crée une nouvelle version)" : ""}
-                      >
-                        Modifier
                       </Button>
 
                       <Button
@@ -790,24 +744,18 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
           )}
 
           <Separator />
-
           <div className="text-xs text-muted-foreground">
-            Règle recommandée : <strong>append-only</strong> (chaque sauvegarde crée une nouvelle version).
-            Pour “modifier”, on recharge un <strong>draft</strong> et on resauve → nouvelle version.
+            Chaque sauvegarde crée une <strong>nouvelle version</strong>.
           </div>
         </CardContent>
       </Card>
 
-      <ScoringDetailDialog
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        evaluationId={detailEvalId}
-      />
+      <ScoringDetailDialog open={detailOpen} onOpenChange={setDetailOpen} evaluationId={detailEvalId} />
     </div>
   );
 }
 
-/** Input compact (sans shadcn Select pour rester ultra stable) */
+/** Input compact */
 function SelectInput(props: {
   disabled?: boolean;
   inputType: InputType;
@@ -823,10 +771,7 @@ function SelectInput(props: {
         className="h-9 w-full sm:w-[360px] rounded-md border bg-background px-3 text-sm"
         disabled={disabled}
         value={value == null ? "" : String(value)}
-        onChange={(e) => {
-          const v = e.target.value;
-          onChange(v === "" ? null : v); // on stocke l'id d'option en string
-        }}
+        onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
       >
         <option value="">— Choisir —</option>
         {(options ?? []).map((o) => (
@@ -846,10 +791,7 @@ function SelectInput(props: {
         type="number"
         step="0.01"
         value={value == null ? "" : String(value)}
-        onChange={(e) => {
-          const raw = e.target.value;
-          onChange(raw === "" ? null : raw);
-        }}
+        onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
         placeholder="0..1"
       />
     );
