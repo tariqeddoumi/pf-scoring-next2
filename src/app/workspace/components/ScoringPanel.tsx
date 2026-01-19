@@ -2,7 +2,16 @@
 
 import * as React from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { computeScores, resolveGrade } from "@/lib/scoring";
+import {
+  computeScores,
+  resolveGrade,
+  type Domain,
+  type Answers,
+  type AnswerValue,
+  type GradeBucket,
+  type InputType,
+  type Aggregation,
+} from "@/lib/scoring";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,23 +23,26 @@ import { Separator } from "@/components/ui/separator";
 import type { ProjectRow } from "../types";
 import ScoringDetailDialog from "./ScoringCompareDialog";
 
-/**
- * IMPORTANT (aligné avec TA base) :
- * - Sous-critères = v_scoring_subcriteria_compat
- * - Options = v_scoring_options_compat
- *   (owner_kind contient "subcriterion" chez toi => OK)
- */
+/** -----------------------------
+ * DB rows (adaptés à ta base)
+ * ----------------------------- */
 
-type DimensionRow = { id: number; code: string; weight: number; sort_order: number; active: boolean };
+type DimensionRow = {
+  id: number;
+  code: string;
+  weight: number;
+  sort_order: number;
+  active: boolean;
+};
 
-type CriteriaRootRow = {
+type CriteriaRow = {
   id: number;
   dimension_id: number;
   code: string;
   label: string;
   weight: number;
-  input_type: "select" | "yesno" | "number" | "text" | "range";
-  aggregation: "sum" | "avg" | "max" | "min";
+  input_type: InputType;
+  aggregation: Aggregation;
   sort_order: number;
   active: boolean;
   parent_criterion_id: number | null;
@@ -43,18 +55,20 @@ type SubcriterionCompatRow = {
   label: string;
   description: string | null;
   weight: number;
-  input_type: "select" | "yesno" | "number" | "text" | "range";
+  input_type: InputType;
   sort_order: number;
   active: boolean;
 };
 
 type OptionCompatRow = {
   id: number;
-  criterion_id: number | null; // vue peut renvoyer null si owner_kind inconnu -> on ignore
+  // IMPORTANT: chez toi la vue expose criterion_id (owner_kind = "subcriterion" => criterion_id = subcriterion_id)
+  criterion_id: number | null;
   value_label: string;
   score: number;
   sort_order: number;
   active: boolean;
+
   owner_kind: string;
   owner_id: number;
   value_code: string;
@@ -84,30 +98,6 @@ type EvalRow = {
   validated_at: string | null;
 };
 
-type AnswerValue = string | number;
-type Answers = Record<number, { value?: AnswerValue; sub?: Record<number, { value?: AnswerValue }> }>;
-
-type Domain = {
-  id: number;
-  code: string;
-  weight: number;
-  criteria: Array<{
-    id: number;
-    code: string;
-    weight: number;
-    input_type: "select" | "yesno" | "number" | "text" | "range";
-    aggregation: "sum" | "avg" | "max" | "min";
-    options?: Array<{ id: number; value_label: string; score: number }>;
-    subcriteria?: Array<{
-      id: number;
-      code: string;
-      weight: number;
-      input_type: "select" | "yesno" | "number" | "text" | "range";
-      options?: Array<{ id: number; value_label: string; score: number }>;
-    }>;
-  }>;
-};
-
 function safeNum(v: unknown, fallback = 0): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -115,21 +105,22 @@ function safeNum(v: unknown, fallback = 0): number {
 
 function buildDomains(params: {
   dimensions: DimensionRow[];
-  criteriaRoots: CriteriaRootRow[];
+  criteria: CriteriaRow[];
   subcriteria: SubcriterionCompatRow[];
   options: OptionCompatRow[];
 }): Domain[] {
-  const { dimensions, criteriaRoots, subcriteria, options } = params;
+  const { dimensions, criteria, subcriteria, options } = params;
 
   const dims = dimensions
-    .filter(d => d.active)
+    .filter((d) => d.active)
     .slice()
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
-  const rootsByDim = new Map<number, CriteriaRootRow[]>();
-  for (const c of criteriaRoots) {
+  // Critères racines (parent_criterion_id null) groupés par dimension
+  const rootsByDim = new Map<number, CriteriaRow[]>();
+  for (const c of criteria) {
     if (!c.active) continue;
-    if (c.parent_criterion_id != null) continue; // sécurité
+    if (c.parent_criterion_id != null) continue;
     const arr = rootsByDim.get(c.dimension_id) ?? [];
     arr.push(c);
     rootsByDim.set(c.dimension_id, arr);
@@ -139,6 +130,7 @@ function buildDomains(params: {
     rootsByDim.set(k, arr);
   }
 
+  // Sous-critères groupés par critère parent
   const subsByCrit = new Map<number, SubcriterionCompatRow[]>();
   for (const s of subcriteria) {
     if (!s.active) continue;
@@ -151,6 +143,8 @@ function buildDomains(params: {
     subsByCrit.set(k, arr);
   }
 
+  // Options groupées par "criterion_id" de la vue compat
+  // (critère leaf => criterion_id = crit.id ; sous-critère => criterion_id = subcriterion_id)
   const optsByOwner = new Map<number, OptionCompatRow[]>();
   for (const o of options) {
     if (!o.active) continue;
@@ -164,13 +158,15 @@ function buildDomains(params: {
     optsByOwner.set(k, arr);
   }
 
-  return dims.map(d => {
+  // Build Domain[] conforme à lib/scoring.ts
+  return dims.map((d) => {
     const roots = rootsByDim.get(d.id) ?? [];
+
     return {
       id: d.id,
       code: d.code,
       weight: safeNum(d.weight, 0),
-      criteria: roots.map(r => {
+      criteria: roots.map((r) => {
         const subs = subsByCrit.get(r.id) ?? [];
         const hasSubs = subs.length > 0;
 
@@ -182,18 +178,18 @@ function buildDomains(params: {
           aggregation: r.aggregation,
           options: hasSubs
             ? undefined
-            : (optsByOwner.get(r.id) ?? []).map(o => ({
+            : (optsByOwner.get(r.id) ?? []).map((o) => ({
                 id: o.id,
                 value_label: o.value_label,
                 score: safeNum(o.score, 0),
               })),
           subcriteria: hasSubs
-            ? subs.map(s => ({
+            ? subs.map((s) => ({
                 id: s.subcriterion_id,
                 code: s.code,
                 weight: safeNum(s.weight, 0),
                 input_type: s.input_type,
-                options: (optsByOwner.get(s.subcriterion_id) ?? []).map(o => ({
+                options: (optsByOwner.get(s.subcriterion_id) ?? []).map((o) => ({
                   id: o.id,
                   value_label: o.value_label,
                   score: safeNum(o.score, 0),
@@ -206,15 +202,28 @@ function buildDomains(params: {
   });
 }
 
+function mapGradeBuckets(rows: GradeBucketRow[]): GradeBucket[] {
+  // ta lib/scoring.ts attend {min,max,grade,pd}
+  return (rows ?? [])
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((r) => ({
+      grade: r.grade,
+      min: safeNum(r.min_score, 0),
+      max: safeNum(r.max_score, 1),
+      pd: safeNum(r.pd, 0),
+    }));
+}
+
 export default function ScoringPanel({ project }: { project: ProjectRow }) {
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const [dimensions, setDimensions] = React.useState<DimensionRow[]>([]);
-  const [criteriaRoots, setCriteriaRoots] = React.useState<CriteriaRootRow[]>([]);
+  const [criteria, setCriteria] = React.useState<CriteriaRow[]>([]);
   const [subcriteria, setSubcriteria] = React.useState<SubcriterionCompatRow[]>([]);
   const [options, setOptions] = React.useState<OptionCompatRow[]>([]);
-  const [gradeBuckets, setGradeBuckets] = React.useState<GradeBucketRow[]>([]);
+  const [gradeBuckets, setGradeBuckets] = React.useState<GradeBucket[]>([]);
 
   const [domains, setDomains] = React.useState<Domain[]>([]);
   const [answers, setAnswers] = React.useState<Answers>({});
@@ -224,57 +233,59 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
   const [history, setHistory] = React.useState<EvalRow[]>([]);
   const [activeEval, setActiveEval] = React.useState<EvalRow | null>(null);
 
+  // "Modifier" = copier une ancienne version et produire V+1
+  const [editingFrom, setEditingFrom] = React.useState<string | null>(null);
+
   // Détail
   const [detailOpen, setDetailOpen] = React.useState(false);
   const [detailEvalId, setDetailEvalId] = React.useState<string | null>(null);
 
-  // UI mode
-  const [editingFrom, setEditingFrom] = React.useState<string | null>(null); // si on "modifie" une éval (copie -> V+1)
-
   const computed = React.useMemo(() => {
     if (!domains.length) return { total: 0, domainScores: {} as Record<string, number> };
-    // computeScores vient de lib/scoring et accepte nos Domain+Answers
-    return computeScores(domains as any, answers as any) as { total: number; domainScores: Record<string, number> };
+    return computeScores(domains, answers);
   }, [domains, answers]);
 
   const gradeInfo = React.useMemo(() => {
-    if (!gradeBuckets?.length) return { grade: "N/A", pd: 0.05 };
-    const r = resolveGrade(computed.total, gradeBuckets as hookupGradeBucket[]);
-    return { grade: r.grade ?? "N/A", pd: typeof r.pd === "number" ? r.pd : 0.05 };
+    const r = resolveGrade(computed.total, gradeBuckets);
+    return {
+      grade: r.grade ?? "N/A",
+      pd: r.pd,
+    };
   }, [computed.total, gradeBuckets]);
 
   async function loadParams() {
     setLoading(true);
     setLoadError(null);
 
-    const [{ data: d, error: ed }, { data: c, error: ec }, { data: sc, error: esc }, { data: o, error: eo }, { data: gb, error: egb }] =
-      await Promise.all([
-        supabase
-          .from("scoring_dimensions")
-          .select("id,code,weight,sort_order,active")
-          .order("sort_order", { ascending: true }),
-        supabase
-          .from("scoring_criteria")
-          .select("id,dimension_id,code,label,weight,input_type,aggregation,sort_order,active,parent_criterion_id")
-          .eq("active", true)
-          .order("dimension_id", { ascending: true })
-          .order("sort_order", { ascending: true }),
-        supabase
-          .from("v_scoring_subcriteria_compat")
-          .select("criterion_id,subcriterion_id,code,label,description,weight,input_type,sort_order,active")
-          .order("criterion_id", { ascending: true })
-          .order("sort_order", { ascending: true }),
-        supabase
-          .from("v_scoring_options_compat")
-          .select("id,criterion_id,value_label,score,sort_order,active,owner_kind,owner_id,value_code")
-          .eq("active", true)
-          .order("criterion_id", { ascending: true })
-          .order("sort_order", { ascending: true }),
-        supabase
-          .from("scoring_grade_buckets")
-          .select("id,model_name,min_score,max_score,grade,pd,sort_order")
-          .order("sort_order", { ascending: true }),
-      ]);
+    const [
+      { data: d, error: ed },
+      { data: c, error: ec },
+      { data: sc, error: esc },
+      { data: o, error: eo },
+      { data: gb, error: egb },
+    ] = await Promise.all([
+      supabase.from("scoring_dimensions").select("id,code,weight,sort_order,active").order("sort_order", { ascending: true }),
+      supabase
+        .from("scoring_criteria")
+        .select("id,dimension_id,code,label,weight,input_type,aggregation,sort_order,active,parent_criterion_id")
+        .order("dimension_id", { ascending: true })
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("v_scoring_subcriteria_compat")
+        .select("criterion_id,subcriterion_id,code,label,description,weight,input_type,sort_order,active")
+        .order("criterion_id", { ascending: true })
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("v_scoring_options_compat")
+        .select("id,criterion_id,value_label,score,sort_order,active,owner_kind,owner_id,value_code")
+        .eq("active", true)
+        .order("criterion_id", { ascending: true })
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("scoring_grade_buckets")
+        .select("id,model_name,min_score,max_score,grade,pd,sort_order")
+        .order("sort_order", { ascending: true }),
+    ]);
 
     const firstErr = ed?.message || ec?.message || esc?.message || eo?.message || egb?.message;
     if (firstErr) {
@@ -284,24 +295,25 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
     }
 
     const dims = (d ?? []) as DimensionRow[];
-    const crits = (c ?? []) as CriteriaRootRow[];
+    const crit = (c ?? []) as CriteriaRow[];
     const subs = (sc ?? []) as SubcriterionCompatRow[];
     const opts = (o ?? []) as OptionCompatRow[];
-    const buckets = (gb ?? []) as GradeBucketRow[];
+    const buckets = mapGradeBuckets((gb ?? []) as GradeBucketRow[]);
 
     setDimensions(dims);
-    setCriteriaRoots(crits);
+    setCriteria(crit);
     setSubcriteria(subs);
     setOptions(opts);
     setGradeBuckets(buckets);
 
-    const built = buildDomains({ dimensions: dims, criteriaRoots: crits, subcriteria: subs, options: opts });
+    const built = buildDomains({ dimensions: dims, criteria: crit, subcriteria: subs, options: opts });
     setDomains(built);
 
     setLoading(false);
   }
 
   async function loadHistory() {
+    // on récupère (ou pas) le set du projet
     const { data: sets, error: esets } = await supabase
       .from("scoring_evaluation_sets")
       .select("id,project_id,name,created_at,updated_at")
@@ -310,7 +322,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
       .limit(1);
 
     if (esets) {
-      // on n'empêche pas de scorer, on affiche juste l'erreur en log
       console.error(esets);
       setEvalSetId(null);
       setHistory([]);
@@ -349,7 +360,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
     void (async () => {
       await loadParams();
       await loadHistory();
-      // Après chargement, mode "nouvelle évaluation" par défaut
+      // par défaut: nouvelle évaluation
       setEditingFrom(null);
       setAnswers({});
     })();
@@ -358,15 +369,13 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
 
   function newEvaluation() {
     setEditingFrom(null);
-    setActiveEval(history[0] ?? null);
     setAnswers({});
   }
 
   function loadEvaluationIntoForm(ev: EvalRow) {
     setActiveEval(ev);
-    setEditingFrom(ev.id); // on indique qu'on "modifie" cette version (en réalité: copie -> V+1)
-    const cast = (ev.answers ?? {}) as unknown as Answers;
-    setAnswers(cast);
+    setEditingFrom(ev.id);
+    setAnswers((ev.answers ?? {}) as unknown as Answers);
   }
 
   async function ensureSet(): Promise<string> {
@@ -395,7 +404,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
       results: {
         total: computed.total,
         domainScores: computed.domainScores,
-        editing_from: editingFrom, // trace d’audit
+        editing_from: editingFrom,
       },
       total_score: computed.total,
       grade: gradeInfo.grade,
@@ -407,7 +416,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
     if (error) throw error;
 
     await loadHistory();
-    // après save -> on reste en mode "nouvelle" (tu peux continuer à saisir)
     setEditingFrom(null);
   }
 
@@ -432,7 +440,6 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
     const { error } = await supabase.from("scoring_evaluations").delete().eq("id", ev.id);
     if (error) throw error;
 
-    // si on supprimait celle chargée, reset
     if (activeEval?.id === ev.id) {
       setEditingFrom(null);
       setAnswers({});
@@ -443,7 +450,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
   }
 
   function setCritValue(criterionId: number, value: AnswerValue | undefined) {
-    setAnswers(prev => {
+    setAnswers((prev) => {
       const next: Answers = { ...prev };
       const cur = next[criterionId] ?? {};
       next[criterionId] = { ...cur, value };
@@ -452,7 +459,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
   }
 
   function setSubValue(criterionId: number, subId: number, value: AnswerValue | undefined) {
-    setAnswers(prev => {
+    setAnswers((prev) => {
       const next: Answers = { ...prev };
       const cur = next[criterionId] ?? {};
       const sub = { ...(cur.sub ?? {}) };
@@ -482,18 +489,18 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
     );
   }
 
-  const firstTab = dimensions.find(d => d.active)?.code ?? "D1";
+  const firstTab = dimensions.find((d) => d.active)?.code ?? "D1";
 
   return (
     <div className="space-y-3">
-      {/* Header sticky: score + actions */}
+      {/* Header sticky */}
       <div className="sticky top-[72px] z-20">
         <Card className="border bg-background/95 backdrop-blur">
           <CardContent className="py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary">Total: {(computed.total * 100).toFixed(1)}%</Badge>
               <Badge variant="secondary">Grade: {gradeInfo.grade}</Badge>
-              <Badge variant="secondary">PD: {gradeInfo.pd.toFixed(4)}</Badge>
+              <Badge variant="secondary">PD: {gradeInfo.pd ?? "—"}</Badge>
 
               {activeEval ? (
                 <Badge variant={activeEval.status === "validated" ? "default" : "secondary"}>
@@ -503,7 +510,11 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
                 <Badge variant="secondary">Aucune version</Badge>
               )}
 
-              {editingFrom ? <Badge variant="secondary">Mode: modification → V+1</Badge> : <Badge variant="secondary">Mode: nouvelle évaluation</Badge>}
+              {editingFrom ? (
+                <Badge variant="secondary">Mode: modification → V+1</Badge>
+              ) : (
+                <Badge variant="secondary">Mode: nouvelle évaluation</Badge>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2 justify-end">
@@ -530,14 +541,14 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
       {/* Saisie par domaines */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Saisie par domaine (style V4)</CardTitle>
+          <CardTitle className="text-base">Saisie par domaine</CardTitle>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue={firstTab} className="w-full">
             <TabsList className="flex flex-wrap gap-1 h-auto">
               {dimensions
-                .filter(d => d.active)
-                .map(d => (
+                .filter((d) => d.active)
+                .map((d) => (
                   <TabsTrigger key={d.id} value={d.code} className="gap-2">
                     {d.code}
                     <Badge variant="secondary" className="ml-1">
@@ -547,17 +558,19 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
                 ))}
             </TabsList>
 
-            {domains.map(dom => (
+            {domains.map((dom) => (
               <TabsContent key={dom.code} value={dom.code} className="mt-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
                     Domaine <strong>{dom.code}</strong> (poids {dom.weight})
                   </div>
-                  <Badge variant="secondary">Score domaine: {((computed.domainScores?.[dom.code] ?? 0) * 100).toFixed(1)}%</Badge>
+                  <Badge variant="secondary">
+                    Score domaine: {((computed.domainScores?.[dom.code] ?? 0) * 100).toFixed(1)}%
+                  </Badge>
                 </div>
 
                 <div className="space-y-3">
-                  {dom.criteria.map(c => {
+                  {dom.criteria.map((c) => {
                     const aC = answers[c.id];
                     const hasSubs = (c.subcriteria?.length ?? 0) > 0;
 
@@ -581,10 +594,13 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
 
                           {hasSubs ? (
                             <div className="space-y-2">
-                              {c.subcriteria!.map(s => {
+                              {c.subcriteria!.map((s) => {
                                 const aS = aC?.sub?.[s.id];
                                 return (
-                                  <div key={s.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                  <div
+                                    key={s.id}
+                                    className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                                  >
                                     <div className="text-sm">
                                       {s.code} <span className="text-muted-foreground">(w {s.weight})</span>
                                     </div>
@@ -634,7 +650,7 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
               </TableHeader>
 
               <TableBody>
-                {history.map(ev => (
+                {history.map((ev) => (
                   <TableRow key={ev.id} className={activeEval?.id === ev.id ? "bg-muted/40" : ""}>
                     <TableCell>V{ev.version}</TableCell>
                     <TableCell>
@@ -642,7 +658,9 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
                     </TableCell>
                     <TableCell>{(safeNum(ev.total_score, 0) * 100).toFixed(1)}%</TableCell>
                     <TableCell>{ev.grade ?? "—"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{new Date(ev.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(ev.created_at).toLocaleString()}
+                    </TableCell>
 
                     <TableCell className="text-right space-x-2">
                       <Button size="sm" variant="outline" onClick={() => loadEvaluationIntoForm(ev)}>
@@ -660,7 +678,12 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
                         Voir détail
                       </Button>
 
-                      <Button size="sm" variant="outline" onClick={() => void archiveEvaluation(ev.id)} disabled={ev.status === "archived"}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void archiveEvaluation(ev.id)}
+                        disabled={ev.status === "archived"}
+                      >
                         Archiver
                       </Button>
 
@@ -677,20 +700,21 @@ export default function ScoringPanel({ project }: { project: ProjectRow }) {
           <Separator />
 
           <div className="text-xs text-muted-foreground">
-            ✔️ “Modifier” = on charge une version, on change la saisie, puis <strong>Sauver</strong> crée <strong>une nouvelle version V+1</strong> (audit-friendly).
+            ✔️ “Modifier (V+1)” charge une ancienne version, puis <strong>Sauver</strong> / <strong>Valider</strong> crée
+            une <strong>nouvelle version</strong> (audit-friendly).
           </div>
         </CardContent>
       </Card>
 
-      {/* Modal détail (ouvre aussi une page dédiée via son bouton) */}
+      {/* Modal détail */}
       <ScoringDetailDialog open={detailOpen} onOpenChange={setDetailOpen} evaluationId={detailEvalId} />
     </div>
   );
 }
 
-/** Input compact : select/yesno/number/range/text */
+/** Input compact */
 function SelectInput(props: {
-  inputType: "select" | "yesno" | "number" | "text" | "range";
+  inputType: InputType;
   options?: Array<{ id: number; value_label: string; score: number }>;
   value?: AnswerValue;
   onChange: (v: AnswerValue | undefined) => void;
@@ -705,13 +729,14 @@ function SelectInput(props: {
         onChange={(e) => {
           const v = e.target.value;
           if (!v) return onChange(undefined);
-          // on stocke l'id option en number (plus propre)
+
+          // l’UI stocke l’optionId (number), compatible avec findOptionScore()
           const asN = Number(v);
           onChange(Number.isFinite(asN) ? asN : v);
         }}
       >
         <option value="">— Choisir —</option>
-        {(options ?? []).map(o => (
+        {(options ?? []).map((o) => (
           <option key={o.id} value={String(o.id)}>
             {o.value_label}
           </option>
