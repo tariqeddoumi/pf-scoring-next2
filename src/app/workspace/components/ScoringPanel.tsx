@@ -29,7 +29,7 @@ import type {
   AnswerValue,
 } from "@/lib/scoring";
 
-import ScoringDetailDialog from "./ScoringCompareDialog";
+import ScoringDetailDialog from "./ScoringDetailDialog";
 
 type DimensionRow = {
   id: number;
