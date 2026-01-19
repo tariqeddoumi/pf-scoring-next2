@@ -104,14 +104,6 @@ function weightNormalize(items: Array<{ weight: number }>): number {
   return s > 0 ? s : 0;
 }
 
-function aggregate(values: number[], mode: Aggregation): number {
-  if (values.length === 0) return 0;
-  if (mode === "max") return Math.max(...values);
-  if (mode === "min") return Math.min(...values);
-  if (mode === "avg") return values.reduce((a, b) => a + b, 0) / values.length;
-  // sum (par défaut) -> on clamp ensuite
-  return values.reduce((a, b) => a + b, 0);
-}
 
 /**
  * Calcule le score d'un sous-critère en fonction de son input_type.
