@@ -17,9 +17,7 @@ const LOANS_TABLE = "loans";
 function fmtMoney(v: number | null | undefined, ccy?: string) {
   if (v == null) return "—";
   try {
-    return (
-      new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(v) + (ccy ? ` ${ccy}` : "")
-    );
+    return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(v) + (ccy ? ` ${ccy}` : "");
   } catch {
     return `${v}${ccy ? ` ${ccy}` : ""}`;
   }
@@ -62,7 +60,7 @@ export default function CreditTable({ project }: Props) {
   }, [project.id]);
 
   React.useEffect(() => {
-    fetchLoans();
+    void fetchLoans();
   }, [fetchLoans]);
 
   const filtered = React.useMemo(() => {
@@ -102,12 +100,8 @@ export default function CreditTable({ project }: Props) {
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle>Crédits</CardTitle>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={openNew}>
-            + Nouveau
-          </Button>
-          <Button size="sm" variant="outline" onClick={fetchLoans}>
-            Rafraîchir
-          </Button>
+          <Button size="sm" onClick={openNew}>+ Nouveau</Button>
+          <Button size="sm" variant="outline" onClick={fetchLoans}>Rafraîchir</Button>
         </div>
       </CardHeader>
 
@@ -152,7 +146,7 @@ export default function CreditTable({ project }: Props) {
                     <TableCell>{l.currency ?? "—"}</TableCell>
                     <TableCell>{l.tenor_months != null ? `${l.tenor_months} m` : "—"}</TableCell>
 
-                    {/* ✅ FIX: pricing -> rate */}
+                    {/* ✅ colonne DB = rate */}
                     <TableCell>{fmtPct(l.rate)}</TableCell>
 
                     <TableCell>
@@ -168,7 +162,6 @@ export default function CreditTable({ project }: Props) {
                         {l.status}
                       </Badge>
                     </TableCell>
-
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button size="sm" variant="outline" onClick={() => openEdit(l)}>
@@ -193,13 +186,11 @@ export default function CreditTable({ project }: Props) {
             </Table>
           </div>
 
-          {/* ✅ Props alignées avec CreditFormModal corrigé */}
           <CreditFormModal
             open={open}
             onOpenChange={setOpen}
             projectId={project.id}
-            mode={editing ? "edit" : "create"}
-            initial={editing ?? undefined}
+            loan={editing}           // ✅ OK après Option A (created_at/updated_at sans null)
             onSaved={fetchLoans}
           />
         </div>
