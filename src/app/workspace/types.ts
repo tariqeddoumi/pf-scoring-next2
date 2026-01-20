@@ -26,18 +26,16 @@ export type ProjectRow = {
   city: string | null;
   project_type: string | null;
 
-  // ✅ AJOUT
   notes?: string | null;
 
   currency?: string | null;
   total_cost: number | null;
   financing_amount: number | null;
 
-  status: "draft" | "validated" | "archived";
+  status: ProjectStatus;
   created_at?: string | null;
   updated_at?: string | null;
 };
-
 
 export type LoanRow = {
   id: string;
@@ -46,13 +44,24 @@ export type LoanRow = {
 
   project_id: string;
 
-  facility_type: string;             // ✅ requis
-  amount?: number | null;
-  currency?: string | null;
-  tenor_months?: number | null;
-  pricing?: number | null;
+  // Base: loans.loan_type (NOT NULL)
+  loan_type: string;
 
-  status: LoanStatus;
+  // Base: facility_type existe mais nullable -> optionnel
+  facility_type?: string | null;
+
+  amount: number;
+  currency: string;
+
+  // Base: maturity_months / tenor_months / grace_period_months existent (nullable)
+  maturity_months?: number | null;
+  tenor_months?: number | null;
+  grace_period_months?: number | null;
+
+  // ✅ FIX: Base = rate (pricing n’existe pas)
+  rate?: number | null;
+
+  status?: LoanStatus | null;
   notes?: string | null;
 };
 
@@ -65,7 +74,7 @@ export type EvaluationRow = {
   status: EvaluationStatus;
 
   total_score?: number | null;
-  payload?: unknown | null;          // ✅ pas de any
+  payload?: unknown | null;
 };
 
 export type ScoringOption = {
@@ -77,19 +86,19 @@ export type ScoringOption = {
 export type ScoringCriterion = {
   id: string;
   label: string;
-  weight?: number; // optionnel
+  weight?: number;
   options: ScoringOption[];
 };
 
 export type ScoringDomain = {
   id: string;
   label: string;
-  weight?: number; // optionnel
+  weight?: number;
   criteria: ScoringCriterion[];
 };
 
 export type ScoringTemplate = {
-  version: string; // ex: "v1.0"
+  version: string;
   domains: ScoringDomain[];
 };
 
