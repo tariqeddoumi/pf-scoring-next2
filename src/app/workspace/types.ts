@@ -7,14 +7,14 @@ export type LoanStatus = "draft" | "validated" | "archived";
 
 export type ClientRow = {
   id: string;
-  created_at?: string | null;
-  updated_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 
   name: string;
-  radical?: string | null;
-  segment?: string | null;
+  radical?: string;
+  segment?: string;
   status: ClientStatus;
-  notes?: string | null;
+  notes?: string;
 };
 
 export type ProjectRow = {
@@ -26,49 +26,40 @@ export type ProjectRow = {
   city: string | null;
   project_type: string | null;
 
-  notes?: string | null;
+  notes?: string;
 
   currency?: string | null;
   total_cost: number | null;
   financing_amount: number | null;
 
-  status: ProjectStatus;
-  created_at?: string | null;
-  updated_at?: string | null;
+  status: "draft" | "validated" | "archived";
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type LoanRow = {
   id: string;
-  created_at?: string | null;
-  updated_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 
   project_id: string;
 
-  // Base: loans.loan_type (NOT NULL)
-  loan_type: string;
-
-  // Base: facility_type existe mais nullable -> optionnel
-  facility_type?: string | null;
-
-  amount: number;
-  currency: string;
-
-  // Base: maturity_months / tenor_months / grace_period_months existent (nullable)
-  maturity_months?: number | null;
+  facility_type: string; // requis
+  amount?: number | null;
+  currency?: string | null;
   tenor_months?: number | null;
-  grace_period_months?: number | null;
 
-  // ✅ FIX: Base = rate (pricing n’existe pas)
+  // ✅ colonne réelle dans la base: loans.rate
   rate?: number | null;
 
-  status?: LoanStatus | null;
+  status: LoanStatus;
   notes?: string | null;
 };
 
 export type EvaluationRow = {
   id: string;
-  created_at?: string | null;
-  updated_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 
   project_id: string;
   status: EvaluationStatus;
