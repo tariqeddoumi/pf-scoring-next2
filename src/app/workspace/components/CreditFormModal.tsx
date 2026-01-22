@@ -15,17 +15,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import type { LoanRow } from "../types";
 
 const LOANS_TABLE = "loans";
 
+type LoanLike = Partial<LoanRow> & {
+  // compat si tu as encore des anciennes données / anciens champs
+  rate?: number | null;
+  pricing?: number | null;
+};
+
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   projectId: string;
-  loan?: Partial<LoanRow> | null;
+  loan?: LoanLike | null;
   onSaved?: () => void;
 };
 
@@ -34,6 +39,13 @@ function parseNumberFR(v: string): number | null {
   if (!s) return null;
   const n = Number(s.replace(/\s+/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : null;
+}
+
+function readRateFromLoan(l: LoanLike | null | undefined): number | null {
+  if (!l) return null;
+  if (typeof l.rate === "number") return l.rate;
+  if (typeof l.pricing === "number") return l.pricing;
+  return null;
 }
 
 export default function CreditFormModal({ open, onOpenChange, projectId, loan, onSaved }: Props) {
@@ -50,7 +62,6 @@ export default function CreditFormModal({ open, onOpenChange, projectId, loan, o
   const [status, setStatus] = React.useState<LoanRow["status"]>("draft");
   const [notes, setNotes] = React.useState<string>("");
 
-  // init/reset when opening
   React.useEffect(() => {
     if (!open) return;
 
@@ -59,17 +70,21 @@ export default function CreditFormModal({ open, onOpenChange, projectId, loan, o
     setAmount(loan?.amount != null ? String(loan.amount) : "");
     setCurrency(loan?.currency ?? "MAD");
     setTenorMonths(loan?.tenor_months != null ? String(loan.tenor_months) : "");
-    setPricingPct(loan?.pricing != null ? String(loan.pricing) : "");
+
+    const r = readRateFromLoan(loan ?? null);
+    setPricingPct(r != null ? String(r) : "");
+
     setStatus((loan?.status as LoanRow["status"]) ?? "draft");
     setNotes(loan?.notes ?? "");
   }, [open, loan]);
 
-  async function onSubmit() {
+  async function onSubmit(): Promise<void> {
     setSaving(true);
     setError(null);
 
     try {
-      if (!facilityType.trim()) {
+      const ft = facilityType.trim();
+      if (!ft) {
         setError("Le type de facilité est obligatoire.");
         setSaving(false);
         return;
@@ -79,23 +94,17 @@ export default function CreditFormModal({ open, onOpenChange, projectId, loan, o
       const tenorNum = parseNumberFR(tenorMonths);
       const rateNum = parseNumberFR(pricingPct);
 
-      // Payload DB (⚠️ DB = rate, et loan_type requis)
+      // ⚠️ IMPORTANT:
+      // - ta DB a loan_type NOT NULL => on l’envoie
+      // - ta DB a rate (et pas pricing) => on envoie rate
       const payload = {
         project_id: projectId,
-
-        facility_type: facilityType.trim(),
-
-        // ✅ IMPORTANT: ta table a loan_type NOT NULL => on le renseigne
-        loan_type: facilityType.trim(),
-
+        facility_type: ft,
+        loan_type: ft, // ✅ compat DB (NOT NULL)
         amount: amountNum,
         currency: (currency || "MAD").trim(),
-
         tenor_months: tenorNum != null ? Math.trunc(tenorNum) : null,
-
-        // ✅ IMPORTANT: colonne DB = rate
-        rate: rateNum,
-
+        rate: rateNum, // ✅ colonne DB
         status,
         notes: notes?.trim() ? notes.trim() : null,
       };
@@ -110,7 +119,6 @@ export default function CreditFormModal({ open, onOpenChange, projectId, loan, o
       } else {
         const { error: e } = await supabase.from(LOANS_TABLE).insert(payload);
         if (e) {
-          // ✅ on affiche le message réel de Postgres/Supabase
           setError(e.message || "Erreur lors de la création.");
           setSaving(false);
           return;
@@ -166,16 +174,15 @@ export default function CreditFormModal({ open, onOpenChange, projectId, loan, o
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label>Statut</Label>
-              <Select value={status} onValueChange={(v) => setStatus(v as LoanRow["status"])}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">draft</SelectItem>
-                  <SelectItem value="validated">validated</SelectItem>
-                  <SelectItem value="archived">archived</SelectItem>
-                </SelectContent>
-              </Select>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={status}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value as LoanRow["status"])}
+              >
+                <option value="draft">draft</option>
+                <option value="validated">validated</option>
+                <option value="archived">archived</option>
+              </select>
             </div>
 
             <div className="text-sm text-muted-foreground pt-7">
