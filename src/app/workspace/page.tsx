@@ -54,9 +54,9 @@ export default function WorkspacePage() {
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="text-2xl font-semibold">🧠 Espace de travail — PF Scoring V5</div>
+              <div className="text-2xl font-semibold"> Espace de travail — BCP PF Scoring — V5.3</div>
               <div className="text-sm text-muted-foreground">
-                Ultra compact : client → projets → scoring → crédits → synthèse
+                Banque Centrale Populaire
               </div>
             </div>
 
